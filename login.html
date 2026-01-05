@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تسجيل الدخول - نظام جرد الأصول الحكومية</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#1e40af">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="جرد الأصول">
+    <meta name="description" content="نظام متكامل لإدارة وجرد وحصر الأصول في الجهات الحكومية">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts - Arabic -->
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'arabic': ['Tajawal', 'sans-serif'],
+                    },
+                    colors: {
+                        'gov-blue': '#1e40af',
+                        'gov-blue-light': '#3b82f6',
+                        'gov-green': '#059669',
+                        'gov-gold': '#d97706',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        body {
+            font-family: 'Tajawal', sans-serif;
+        }
+        
+        .login-bg {
+            background: linear-gradient(135deg, #1e40af 0%, #3b82f6 50%, #60a5fa 100%);
+            min-height: 100vh;
+        }
+        
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .input-group {
+            position: relative;
+        }
+        
+        .input-group input {
+            padding-right: 3rem;
+        }
+        
+        .input-group .icon {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9ca3af;
+        }
+        
+        .floating-shapes {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 0;
+        }
+        
+        .shape {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            animation: float 15s infinite ease-in-out;
+        }
+        
+        .shape:nth-child(1) {
+            width: 300px;
+            height: 300px;
+            top: -100px;
+            right: -50px;
+        }
+        
+        .shape:nth-child(2) {
+            width: 200px;
+            height: 200px;
+            bottom: -50px;
+            left: -50px;
+            animation-delay: -5s;
+        }
+        
+        .shape:nth-child(3) {
+            width: 150px;
+            height: 150px;
+            top: 50%;
+            right: 20%;
+            animation-delay: -10s;
+        }
+        
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0) rotate(0deg);
+            }
+            50% {
+                transform: translateY(-30px) rotate(10deg);
+            }
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(30, 64, 175, 0.3);
+        }
+        
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+        
+        .role-card {
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .role-card:hover {
+            transform: scale(1.02);
+            border-color: #3b82f6;
+        }
+        
+        .role-card.selected {
+            border-color: #1e40af;
+            background: linear-gradient(135deg, rgba(30, 64, 175, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%);
+        }
+    </style>
+</head>
+<body class="font-arabic login-bg">
+    <!-- Floating Shapes -->
+    <div class="floating-shapes">
+        <div class="shape"></div>
+        <div class="shape"></div>
+        <div class="shape"></div>
+    </div>
+    
+    <!-- Login Container -->
+    <div class="min-h-screen flex items-center justify-center p-4 relative z-10">
+        <div class="w-full max-w-md">
+            <!-- Logo Section -->
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center justify-center w-20 h-20 bg-white/20 rounded-2xl backdrop-blur-sm mb-4">
+                    <i class="fas fa-building-columns text-4xl text-white"></i>
+                </div>
+                <h1 class="text-3xl font-bold text-white mb-2">نظام جرد الأصول</h1>
+                <p class="text-blue-100">الحكومية المتكامل</p>
+            </div>
+            
+            <!-- Login Card -->
+            <div class="glass-card rounded-3xl shadow-2xl p-8">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">تسجيل الدخول</h2>
+                
+                <!-- Login Form -->
+                <form id="loginForm" onsubmit="handleLogin(event)">
+                    <!-- Username Field -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">اسم المستخدم</label>
+                        <div class="input-group">
+                            <i class="fas fa-user icon"></i>
+                            <input type="text" 
+                                   id="loginUsername" 
+                                   name="username"
+                                   class="w-full p-4 pr-12 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gov-blue focus:border-transparent"
+                                   placeholder="أدخل اسم المستخدم"
+                                   required>
+                        </div>
+                    </div>
+                    
+                    <!-- User ID / Password Field -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">الرقم التعريفي</label>
+                        <div class="input-group">
+                            <i class="fas fa-id-card icon"></i>
+                            <input type="password" 
+                                   id="loginPassword" 
+                                   name="password"
+                                   class="w-full p-4 pr-12 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gov-blue focus:border-transparent"
+                                   placeholder="أدخل الرقم التعريفي"
+                                   required>
+                        </div>
+                    </div>
+                    
+                    <!-- Remember Me -->
+                    <div class="flex items-center justify-between mb-6">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="rememberMe" class="w-4 h-4 rounded border-gray-300 text-gov-blue focus:ring-gov-blue">
+                            <span class="text-sm text-gray-600">تذكرني</span>
+                        </label>
+                        <a href="#" class="text-sm text-gov-blue hover:underline">نسيت كلمة المرور؟</a>
+                    </div>
+                    
+                    <!-- Login Button -->
+                    <button type="submit" 
+                            class="w-full btn-primary text-white font-bold py-4 px-6 rounded-xl flex items-center justify-center gap-2">
+                        <i class="fas fa-sign-in-alt"></i>
+                        تسجيل الدخول
+                    </button>
+                </form>
+                
+                <!-- Divider -->
+                <div class="flex items-center gap-4 my-6">
+                    <div class="flex-1 h-px bg-gray-200"></div>
+                    <span class="text-sm text-gray-400">أو</span>
+                    <div class="flex-1 h-px bg-gray-200"></div>
+                </div>
+                
+                <!-- Demo Accounts -->
+                <div class="space-y-3">
+                    <p class="text-sm text-gray-500 text-center mb-3">حسابات تجريبية:</p>
+                    
+                    <button onclick="loginAsDemo('admin')" 
+                            class="w-full role-card border-2 border-gray-200 rounded-xl p-4 flex items-center gap-4 hover:bg-gray-50">
+                        <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-user-shield text-purple-600 text-xl"></i>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-semibold text-gray-800">المشرف العام</p>
+                            <p class="text-xs text-gray-500">صلاحيات كاملة على النظام</p>
+                        </div>
+                    </button>
+                    
+                    <button onclick="loginAsDemo('manager')" 
+                            class="w-full role-card border-2 border-gray-200 rounded-xl p-4 flex items-center gap-4 hover:bg-gray-50">
+                        <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-user-tie text-blue-600 text-xl"></i>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-semibold text-gray-800">مدير الفرع</p>
+                            <p class="text-xs text-gray-500">إدارة فرع واحد</p>
+                        </div>
+                    </button>
+                    
+                    <button onclick="loginAsDemo('field_user')" 
+                            class="w-full role-card border-2 border-gray-200 rounded-xl p-4 flex items-center gap-4 hover:bg-gray-50">
+                        <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-user text-green-600 text-xl"></i>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-semibold text-gray-800">عامل ميداني</p>
+                            <p class="text-xs text-gray-500">إضافة أصول فقط</p>
+                        </div>
+                    </button>
+                </div>
+                
+                <!-- Connection Status -->
+                <div id="connectionStatus" class="mt-6 text-center">
+                    <span class="inline-flex items-center gap-2 text-sm text-gray-500">
+                        <i class="fas fa-wifi text-green-500"></i>
+                        متصل بالإنترنت
+                    </span>
+                </div>
+            </div>
+            
+            <!-- Footer -->
+            <p class="text-center text-blue-100 text-sm mt-6">
+                نظام جرد وحصر الأصول الحكومية © 2026
+            </p>
+        </div>
+    </div>
+    
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center">
+        <div class="bg-white rounded-2xl p-8 text-center">
+            <i class="fas fa-spinner fa-spin text-4xl text-gov-blue mb-4"></i>
+            <p class="text-gray-600">جاري تسجيل الدخول...</p>
+        </div>
+    </div>
+    
+    <!-- Toast Container -->
+    <div id="toastContainer" class="fixed top-4 left-4 z-50 space-y-2"></div>
+    
+    <script>
+        // Demo accounts
+        const DEMO_ACCOUNTS = {
+            admin: {
+                id: 'demo-admin',
+                username: 'admin',
+                displayName: 'المشرف العام',
+                role: 'admin',
+                branch: null,
+                branchName: 'جميع الفروع'
+            },
+            manager: {
+                id: 'demo-manager',
+                username: 'manager',
+                displayName: 'مدير الفرع الرئيسي',
+                role: 'manager',
+                branch: 'main',
+                branchName: 'المقر الرئيسي'
+            },
+            field_user: {
+                id: 'demo-field',
+                username: 'field_user',
+                displayName: 'عامل ميداني',
+                role: 'field_user',
+                branch: 'main',
+                branchName: 'المقر الرئيسي'
+            }
+        };
+
+        // Handle login form submission
+        async function handleLogin(event) {
+            event.preventDefault();
+            
+            const username = document.getElementById('loginUsername').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            const rememberMe = document.getElementById('rememberMe').checked;
+            
+            if (!username || !password) {
+                showToast('يرجى إدخال اسم المستخدم والرقم التعريفي', 'error');
+                return;
+            }
+            
+            showLoading();
+            
+            try {
+                // Check demo accounts first
+                const demoAccount = Object.values(DEMO_ACCOUNTS).find(
+                    acc => acc.username === username && password === '123456'
+                );
+                
+                if (demoAccount) {
+                    await loginUser(demoAccount, rememberMe);
+                    return;
+                }
+                
+                // Try to load from local storage
+                const users = JSON.parse(localStorage.getItem('users') || '[]');
+                const user = users.find(u => u.username === username && u.id === password);
+                
+                if (user) {
+                    await loginUser(user, rememberMe);
+                } else {
+                    showToast('اسم المستخدم أو الرقم التعريفي غير صحيح', 'error');
+                }
+                
+            } catch (error) {
+                console.error('Login error:', error);
+                showToast('حدث خطأ أثناء تسجيل الدخول', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+        
+        // Login as demo user
+        async function loginAsDemo(role) {
+            const demoAccount = DEMO_ACCOUNTS[role];
+            if (demoAccount) {
+                showLoading();
+                await loginUser(demoAccount, true);
+            }
+        }
+        
+        // Login user and redirect
+        async function loginUser(user, remember) {
+            // Save to session/local storage
+            const storage = remember ? localStorage : sessionStorage;
+            storage.setItem('currentUser', JSON.stringify(user));
+            
+            // Also save to localStorage for offline access
+            localStorage.setItem('currentUser', JSON.stringify(user));
+            
+            showToast('تم تسجيل الدخول بنجاح', 'success');
+            
+            // Wait a moment then redirect
+            setTimeout(() => {
+                window.location.href = 'index.html';
+            }, 1000);
+        }
+        
+        // Show loading overlay
+        function showLoading() {
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+        }
+        
+        // Hide loading overlay
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+        }
+        
+        // Show toast notification
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            
+            const colors = {
+                success: 'bg-green-500',
+                error: 'bg-red-500',
+                warning: 'bg-yellow-500',
+                info: 'bg-blue-500'
+            };
+            
+            const icons = {
+                success: 'fa-check-circle',
+                error: 'fa-exclamation-circle',
+                warning: 'fa-exclamation-triangle',
+                info: 'fa-info-circle'
+            };
+            
+            toast.className = `${colors[type]} text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-3 transform transition-all duration-300 translate-x-full`;
+            toast.innerHTML = `
+                <i class="fas ${icons[type]}"></i>
+                <span>${message}</span>
+            `;
+            
+            container.appendChild(toast);
+            
+            // Animate in
+            setTimeout(() => {
+                toast.classList.remove('translate-x-full');
+            }, 100);
+            
+            // Remove after delay
+            setTimeout(() => {
+                toast.classList.add('translate-x-full');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+        
+        // Check connection status
+        function updateConnectionStatus() {
+            const statusEl = document.getElementById('connectionStatus');
+            if (navigator.onLine) {
+                statusEl.innerHTML = `
+                    <span class="inline-flex items-center gap-2 text-sm text-gray-500">
+                        <i class="fas fa-wifi text-green-500"></i>
+                        متصل بالإنترنت
+                    </span>
+                `;
+            } else {
+                statusEl.innerHTML = `
+                    <span class="inline-flex items-center gap-2 text-sm text-gray-500">
+                        <i class="fas fa-wifi-slash text-red-500"></i>
+                        غير متصل - الوضع المحلي
+                    </span>
+                `;
+            }
+        }
+        
+        // Check if already logged in
+        function checkExistingSession() {
+            const user = localStorage.getItem('currentUser') || sessionStorage.getItem('currentUser');
+            if (user) {
+                window.location.href = 'index.html';
+            }
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            checkExistingSession();
+            updateConnectionStatus();
+            
+            window.addEventListener('online', updateConnectionStatus);
+            window.addEventListener('offline', updateConnectionStatus);
+        });
+    </script>
+</body>
+</html>
