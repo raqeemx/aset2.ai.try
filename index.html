@@ -129,28 +129,47 @@
                 <i class="fas fa-cog w-6"></i>
                 <span>الإعدادات</span>
             </a>
+            
+            <!-- جلسات الجرد - للمشرف والمدير -->
+            <a href="#" onclick="showPage('sessions')" class="nav-link flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 hover:bg-white/10" data-role="manager">
+                <i class="fas fa-calendar-check w-6"></i>
+                <span>جلسات الجرد</span>
+            </a>
+            
+            <!-- إدارة المستخدمين - للمشرف فقط -->
+            <a href="#" onclick="showPage('users')" class="nav-link flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 hover:bg-white/10" data-role="admin">
+                <i class="fas fa-users-cog w-6"></i>
+                <span>المستخدمين</span>
+            </a>
+            
+            <!-- إدارة الفروع - للمشرف فقط -->
+            <a href="#" onclick="showPage('branches')" class="nav-link flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 hover:bg-white/10" data-role="admin">
+                <i class="fas fa-code-branch w-6"></i>
+                <span>الفروع</span>
+            </a>
         </nav>
         
         <div class="absolute bottom-0 right-0 left-0 p-4 border-t border-white/20">
-            <!-- Inventory Person Badge -->
-            <div id="inventoryPersonBadge" class="inventory-person-badge mb-3" style="display: none;">
-                <i class="fas fa-user-check"></i>
-                <span class="inventory-person-display"></span>
-            </div>
-            
+            <!-- User Info -->
             <div class="bg-white/10 rounded-xl p-4">
                 <div class="flex items-center gap-3 mb-3">
-                    <div class="w-10 h-10 bg-gov-gold rounded-full flex items-center justify-center cursor-pointer" onclick="setInventoryPerson()">
+                    <div class="w-10 h-10 bg-gov-gold rounded-full flex items-center justify-center">
                         <i class="fas fa-user"></i>
                     </div>
-                    <div>
-                        <p class="font-semibold text-sm">القائم بالجرد</p>
-                        <p class="text-blue-200 text-xs inventory-person-display">انقر للتعيين</p>
+                    <div class="flex-1 min-w-0">
+                        <p class="font-semibold text-sm inventory-person-display truncate">المستخدم</p>
+                        <p class="text-blue-200 text-xs" id="userRoleDisplay">الصلاحية</p>
                     </div>
                 </div>
                 
+                <!-- Logout Button -->
+                <button onclick="handleLogout()" class="w-full bg-red-500/20 text-red-200 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-red-500/30 transition-colors mt-2">
+                    <i class="fas fa-sign-out-alt"></i>
+                    تسجيل الخروج
+                </button>
+                
                 <!-- PWA Install Button -->
-                <button id="pwaInstallBtn" onclick="installPWA()" class="pwa-install-btn w-full mt-2">
+                <button id="pwaInstallBtn" onclick="installPWA()" class="pwa-install-btn w-full mt-2 hidden">
                     <i class="fas fa-download"></i>
                     تثبيت التطبيق
                 </button>
@@ -186,8 +205,9 @@
                     </button>
                     
                     <!-- Notifications -->
-                    <button class="relative p-2 text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">
+                    <button onclick="toggleNotificationsPanel()" class="relative p-2 text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">
                         <i class="fas fa-bell text-xl"></i>
+                        <span class="notification-badge absolute -top-1 -left-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center hidden">0</span>
                         <span class="absolute -top-1 -left-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">3</span>
                     </button>
                     
@@ -332,6 +352,136 @@
                     <h3 class="text-lg font-bold text-gray-800 mb-4">تنبيهات هامة</h3>
                     <div class="space-y-4" id="alertsList">
                         <!-- Filled by JS -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Admin Dashboard Section - للمشرف فقط -->
+            <div class="mt-8 space-y-6" data-role="admin">
+                <!-- Live Activity Monitor -->
+                <div class="bg-white rounded-2xl shadow-lg p-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-broadcast-tower ml-2 text-red-500 animate-pulse"></i>متابعة مباشرة لنشاط العمال</h3>
+                        <span class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm"><i class="fas fa-circle text-xs ml-1 animate-pulse"></i>مباشر</span>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-blue-600 text-sm mb-1">العمال النشطون الآن</p>
+                                    <p class="text-3xl font-bold text-blue-800" id="activeWorkersNow">0</p>
+                                </div>
+                                <div class="bg-blue-200 p-3 rounded-xl">
+                                    <i class="fas fa-user-check text-xl text-blue-600"></i>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-green-600 text-sm mb-1">أصول مضافة اليوم</p>
+                                    <p class="text-3xl font-bold text-green-800" id="todayAssetsCount">0</p>
+                                </div>
+                                <div class="bg-green-200 p-3 rounded-xl">
+                                    <i class="fas fa-plus-circle text-xl text-green-600"></i>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-purple-600 text-sm mb-1">جلسات نشطة</p>
+                                    <p class="text-3xl font-bold text-purple-800" id="activeSessionsNow">0</p>
+                                </div>
+                                <div class="bg-purple-200 p-3 rounded-xl">
+                                    <i class="fas fa-clipboard-list text-xl text-purple-600"></i>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-orange-600 text-sm mb-1">بانتظار المزامنة</p>
+                                    <p class="text-3xl font-bold text-orange-800" id="pendingSyncItems">0</p>
+                                </div>
+                                <div class="bg-orange-200 p-3 rounded-xl">
+                                    <i class="fas fa-sync text-xl text-orange-600"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Workers Activity Table -->
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="text-right py-3 px-4 text-sm font-semibold text-gray-700">العامل</th>
+                                    <th class="text-right py-3 px-4 text-sm font-semibold text-gray-700">الفرع</th>
+                                    <th class="text-right py-3 px-4 text-sm font-semibold text-gray-700">الجلسة الحالية</th>
+                                    <th class="text-right py-3 px-4 text-sm font-semibold text-gray-700">أصول اليوم</th>
+                                    <th class="text-right py-3 px-4 text-sm font-semibold text-gray-700">آخر نشاط</th>
+                                    <th class="text-center py-3 px-4 text-sm font-semibold text-gray-700">الحالة</th>
+                                </tr>
+                            </thead>
+                            <tbody id="liveWorkersActivity">
+                                <tr class="text-center text-gray-500">
+                                    <td colspan="6" class="py-8"><i class="fas fa-spinner fa-spin ml-2"></i>جاري تحميل بيانات العمال...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Asset Map & Branch Distribution -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Assets Map -->
+                    <div class="bg-white rounded-2xl shadow-lg p-6">
+                        <h3 class="text-lg font-bold text-gray-800 mb-4"><i class="fas fa-map-marked-alt ml-2 text-teal-600"></i>خريطة توزيع الأصول</h3>
+                        <div id="assetsMapContainer" class="w-full h-80 bg-gray-100 rounded-xl flex items-center justify-center border-2 border-dashed border-gray-300">
+                            <div class="text-center text-gray-500">
+                                <i class="fas fa-map-marked-alt text-5xl mb-3 opacity-50"></i>
+                                <p>خريطة توزيع الأصول</p>
+                                <p class="text-sm mt-2">يتم عرض مواقع الأصول المسجلة بالإحداثيات</p>
+                                <button onclick="loadAssetsMap()" class="mt-4 bg-teal-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-teal-700">
+                                    <i class="fas fa-sync ml-1"></i>تحديث الخريطة
+                                </button>
+                            </div>
+                        </div>
+                        <div class="mt-4 grid grid-cols-3 gap-2 text-center">
+                            <div class="bg-blue-50 rounded-lg p-2">
+                                <p class="text-xs text-gray-500">الرياض</p>
+                                <p class="font-bold text-blue-600" id="mapRiyadhCount">0</p>
+                            </div>
+                            <div class="bg-green-50 rounded-lg p-2">
+                                <p class="text-xs text-gray-500">جدة</p>
+                                <p class="font-bold text-green-600" id="mapJeddahCount">0</p>
+                            </div>
+                            <div class="bg-purple-50 rounded-lg p-2">
+                                <p class="text-xs text-gray-500">الدمام</p>
+                                <p class="font-bold text-purple-600" id="mapDammamCount">0</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Branch Performance Chart -->
+                    <div class="bg-white rounded-2xl shadow-lg p-6">
+                        <h3 class="text-lg font-bold text-gray-800 mb-4"><i class="fas fa-chart-bar ml-2 text-indigo-600"></i>أداء الفروع</h3>
+                        <div style="height: 320px;">
+                            <canvas id="branchPerformanceChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Daily Progress Timeline -->
+                <div class="bg-white rounded-2xl shadow-lg p-6">
+                    <h3 class="text-lg font-bold text-gray-800 mb-4"><i class="fas fa-calendar-day ml-2 text-cyan-600"></i>التقدم اليومي</h3>
+                    <div style="height: 250px;">
+                        <canvas id="dailyProgressChart"></canvas>
                     </div>
                 </div>
             </div>
@@ -641,6 +791,213 @@
             </div>
             
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" id="assetLocationsGrid">
+                <!-- Filled by JS -->
+            </div>
+        </div>
+        
+        <!-- Sessions Page (جلسات الجرد) -->
+        <div id="page-sessions" class="page-content p-6 hidden">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-gray-800"><i class="fas fa-calendar-check ml-2 text-gov-blue"></i>جلسات الجرد</h3>
+                <button onclick="openSessionModal()" class="bg-gov-blue text-white px-5 py-3 rounded-xl flex items-center gap-2 hover:bg-gov-blue-light transition-colors" data-role="manager">
+                    <i class="fas fa-plus"></i>
+                    إنشاء جلسة جديدة
+                </button>
+            </div>
+            
+            <!-- Session Stats -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+                <div class="bg-white rounded-2xl shadow-lg p-6 border-r-4 border-green-500">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-600 text-sm mb-1">جلسات نشطة</p>
+                            <p class="text-3xl font-bold text-green-600" id="activeSessionsCount">0</p>
+                        </div>
+                        <div class="bg-green-100 p-4 rounded-xl">
+                            <i class="fas fa-play-circle text-2xl text-green-600"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-2xl shadow-lg p-6 border-r-4 border-blue-500">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-600 text-sm mb-1">مكتملة</p>
+                            <p class="text-3xl font-bold text-blue-600" id="completedSessionsCount">0</p>
+                        </div>
+                        <div class="bg-blue-100 p-4 rounded-xl">
+                            <i class="fas fa-check-double text-2xl text-blue-600"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-2xl shadow-lg p-6 border-r-4 border-purple-500">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-600 text-sm mb-1">أصول اليوم</p>
+                            <p class="text-3xl font-bold text-purple-600" id="todayScansCount">0</p>
+                        </div>
+                        <div class="bg-purple-100 p-4 rounded-xl">
+                            <i class="fas fa-barcode text-2xl text-purple-600"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-2xl shadow-lg p-6 border-r-4 border-orange-500">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-600 text-sm mb-1">عمال نشطون</p>
+                            <p class="text-3xl font-bold text-orange-600" id="activeWorkersCount">0</p>
+                        </div>
+                        <div class="bg-orange-100 p-4 rounded-xl">
+                            <i class="fas fa-users text-2xl text-orange-600"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Sessions List -->
+            <div class="bg-white rounded-2xl shadow-lg p-6 mb-6">
+                <h4 class="text-lg font-bold text-gray-800 mb-4">جلسات الجرد</h4>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="text-right py-4 px-4 text-sm font-semibold text-gray-700">اسم الجلسة</th>
+                                <th class="text-right py-4 px-4 text-sm font-semibold text-gray-700">الفرع</th>
+                                <th class="text-right py-4 px-4 text-sm font-semibold text-gray-700">تاريخ البداية</th>
+                                <th class="text-right py-4 px-4 text-sm font-semibold text-gray-700">تاريخ النهاية</th>
+                                <th class="text-right py-4 px-4 text-sm font-semibold text-gray-700">التقدم</th>
+                                <th class="text-right py-4 px-4 text-sm font-semibold text-gray-700">الحالة</th>
+                                <th class="text-center py-4 px-4 text-sm font-semibold text-gray-700">الإجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sessionsTableBody">
+                            <!-- Filled by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Workers Performance (Admin/Manager only) -->
+            <div class="bg-white rounded-2xl shadow-lg p-6" data-role="manager">
+                <h4 class="text-lg font-bold text-gray-800 mb-4"><i class="fas fa-chart-bar ml-2 text-indigo-600"></i>أداء العمال</h4>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="text-right py-4 px-4 text-sm font-semibold text-gray-700">العامل</th>
+                                <th class="text-right py-4 px-4 text-sm font-semibold text-gray-700">الفرع</th>
+                                <th class="text-right py-4 px-4 text-sm font-semibold text-gray-700">أصول اليوم</th>
+                                <th class="text-right py-4 px-4 text-sm font-semibold text-gray-700">إجمالي الأصول</th>
+                                <th class="text-right py-4 px-4 text-sm font-semibold text-gray-700">آخر نشاط</th>
+                                <th class="text-center py-4 px-4 text-sm font-semibold text-gray-700">الإجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="workersPerformanceBody">
+                            <!-- Filled by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Users Page (إدارة المستخدمين) -->
+        <div id="page-users" class="page-content p-6 hidden">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-gray-800"><i class="fas fa-users-cog ml-2 text-purple-600"></i>إدارة المستخدمين</h3>
+                <button onclick="openUserModal()" class="bg-purple-600 text-white px-5 py-3 rounded-xl flex items-center gap-2 hover:bg-purple-700 transition-colors">
+                    <i class="fas fa-user-plus"></i>
+                    إضافة مستخدم
+                </button>
+            </div>
+            
+            <!-- User Stats -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+                <div class="bg-white rounded-2xl shadow-lg p-6 border-r-4 border-purple-500">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-600 text-sm mb-1">المشرفون</p>
+                            <p class="text-3xl font-bold text-purple-600" id="adminUsersCount">0</p>
+                        </div>
+                        <div class="bg-purple-100 p-4 rounded-xl">
+                            <i class="fas fa-crown text-2xl text-purple-600"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-2xl shadow-lg p-6 border-r-4 border-blue-500">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-600 text-sm mb-1">المديرون</p>
+                            <p class="text-3xl font-bold text-blue-600" id="managerUsersCount">0</p>
+                        </div>
+                        <div class="bg-blue-100 p-4 rounded-xl">
+                            <i class="fas fa-user-tie text-2xl text-blue-600"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-2xl shadow-lg p-6 border-r-4 border-green-500">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-600 text-sm mb-1">العمال الميدانيون</p>
+                            <p class="text-3xl font-bold text-green-600" id="fieldUsersCount">0</p>
+                        </div>
+                        <div class="bg-green-100 p-4 rounded-xl">
+                            <i class="fas fa-user-hard-hat text-2xl text-green-600"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-2xl shadow-lg p-6 border-r-4 border-gray-500">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-600 text-sm mb-1">إجمالي المستخدمين</p>
+                            <p class="text-3xl font-bold text-gray-600" id="totalUsersCount">0</p>
+                        </div>
+                        <div class="bg-gray-100 p-4 rounded-xl">
+                            <i class="fas fa-users text-2xl text-gray-600"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Users Table -->
+            <div class="bg-white rounded-2xl shadow-lg p-6">
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="text-right py-4 px-4 text-sm font-semibold text-gray-700">الاسم</th>
+                                <th class="text-right py-4 px-4 text-sm font-semibold text-gray-700">اسم المستخدم</th>
+                                <th class="text-right py-4 px-4 text-sm font-semibold text-gray-700">البريد الإلكتروني</th>
+                                <th class="text-right py-4 px-4 text-sm font-semibold text-gray-700">الصلاحية</th>
+                                <th class="text-right py-4 px-4 text-sm font-semibold text-gray-700">الفرع</th>
+                                <th class="text-right py-4 px-4 text-sm font-semibold text-gray-700">الحالة</th>
+                                <th class="text-center py-4 px-4 text-sm font-semibold text-gray-700">الإجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTableBody">
+                            <!-- Filled by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Branches Page (إدارة الفروع) -->
+        <div id="page-branches" class="page-content p-6 hidden">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-gray-800"><i class="fas fa-code-branch ml-2 text-teal-600"></i>إدارة الفروع</h3>
+                <button onclick="openBranchModal()" class="bg-teal-600 text-white px-5 py-3 rounded-xl flex items-center gap-2 hover:bg-teal-700 transition-colors">
+                    <i class="fas fa-plus"></i>
+                    إضافة فرع
+                </button>
+            </div>
+            
+            <!-- Branches Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="branchesGrid">
                 <!-- Filled by JS -->
             </div>
         </div>
@@ -1183,14 +1540,31 @@
                         </div>
                     </div>
                     
-                    <!-- Inventory Person -->
+                    <!-- Inventory Person & GPS -->
                     <div class="border-b pb-4 mb-4 bg-purple-50 -mx-6 px-6 py-4">
-                        <h4 class="text-lg font-semibold text-purple-800 mb-4"><i class="fas fa-user-check ml-2"></i>بيانات الجرد</h4>
+                        <h4 class="text-lg font-semibold text-purple-800 mb-4"><i class="fas fa-user-check ml-2"></i>بيانات الجرد والموقع</h4>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-sm font-semibold text-purple-700 mb-2">القائم بالجرد</label>
                                 <input type="text" id="assetInventoryPerson" name="inventoryPerson" class="w-full px-4 py-2 border border-purple-300 rounded-xl focus:ring-2 focus:ring-purple-500 bg-white">
                             </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-purple-700 mb-2"><i class="fas fa-map-marker-alt ml-1"></i>الموقع الجغرافي (GPS)</label>
+                                <button type="button" id="captureLocationBtn" onclick="captureAssetLocation()" 
+                                    class="w-full px-4 py-2 border border-purple-300 rounded-xl bg-white text-purple-700 hover:bg-purple-100 transition-colors flex items-center justify-center gap-2">
+                                    <i class="fas fa-crosshairs"></i>
+                                    <span>تحديد الموقع الحالي</span>
+                                </button>
+                                <input type="hidden" id="assetLatitude" name="latitude">
+                                <input type="hidden" id="assetLongitude" name="longitude">
+                                <p id="locationStatus" class="text-xs text-purple-600 mt-1 hidden"></p>
+                            </div>
+                        </div>
+                        <div id="gpsMapPreview" class="mt-4 hidden">
+                            <a id="gpsMapLink" href="#" target="_blank" class="flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm">
+                                <i class="fas fa-external-link-alt"></i>
+                                <span>فتح الموقع في خرائط Google</span>
+                            </a>
                         </div>
                     </div>
                     
@@ -1523,6 +1897,170 @@
         </div>
     </div>
     
+    <!-- Session Modal -->
+    <div id="sessionModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div class="bg-gradient-to-r from-gov-blue to-indigo-600 text-white p-6 flex items-center justify-between sticky top-0">
+                <h2 class="text-xl font-bold"><i class="fas fa-calendar-plus ml-2"></i>إنشاء جلسة جرد</h2>
+                <button onclick="closeSessionModal()" class="hover:bg-white/20 p-2 rounded-lg transition-colors">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="sessionForm" onsubmit="handleSessionSubmit(event)" class="p-6 space-y-4">
+                <input type="hidden" id="sessionId">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">اسم الجلسة *</label>
+                    <input type="text" id="sessionName" required class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-gov-blue-light" placeholder="مثال: جرد فرع الرياض - يناير 2026">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">الفرع *</label>
+                    <select id="sessionBranch" required class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-gov-blue-light">
+                        <option value="">-- اختر الفرع --</option>
+                    </select>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">تاريخ البداية *</label>
+                        <input type="date" id="sessionStartDate" required class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-gov-blue-light">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">تاريخ النهاية *</label>
+                        <input type="date" id="sessionEndDate" required class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-gov-blue-light">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">عدد الأصول المستهدف</label>
+                    <input type="number" id="sessionTargetAssets" min="0" class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-gov-blue-light" placeholder="0">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">العمال المشاركون</label>
+                    <div id="sessionParticipants" class="max-h-40 overflow-y-auto border rounded-xl p-3 space-y-2">
+                        <!-- Filled by JS -->
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">ملاحظات</label>
+                    <textarea id="sessionNotes" rows="2" class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-gov-blue-light" placeholder="ملاحظات إضافية..."></textarea>
+                </div>
+                <div class="flex gap-4 pt-4">
+                    <button type="submit" class="flex-1 bg-gov-blue text-white py-3 rounded-xl font-semibold hover:bg-gov-blue-light transition-colors">
+                        <i class="fas fa-save ml-2"></i>حفظ الجلسة
+                    </button>
+                    <button type="button" onclick="closeSessionModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold hover:bg-gray-300 transition-colors">
+                        إلغاء
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- User Modal -->
+    <div id="userModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div class="bg-gradient-to-r from-purple-600 to-purple-800 text-white p-6 flex items-center justify-between sticky top-0">
+                <h2 class="text-xl font-bold"><i class="fas fa-user-plus ml-2"></i>إضافة مستخدم</h2>
+                <button onclick="closeUserModal()" class="hover:bg-white/20 p-2 rounded-lg transition-colors">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="userForm" onsubmit="handleUserSubmit(event)" class="p-6 space-y-4">
+                <input type="hidden" id="editUserId">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">الاسم الكامل *</label>
+                    <input type="text" id="userName" required class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-purple-500" placeholder="الاسم الكامل">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">اسم المستخدم *</label>
+                    <input type="text" id="userUsername" required class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-purple-500" placeholder="اسم المستخدم للدخول">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">البريد الإلكتروني *</label>
+                    <input type="email" id="userEmail" required class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-purple-500" placeholder="example@gov.sa">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">كلمة المرور *</label>
+                    <input type="password" id="userPassword" class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-purple-500" placeholder="كلمة المرور">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">الرقم الوظيفي</label>
+                    <input type="text" id="userEmployeeId" class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-purple-500" placeholder="EMP-XXX">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">رقم الهاتف</label>
+                    <input type="tel" id="userPhone" class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-purple-500" placeholder="05XXXXXXXX">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">الصلاحية *</label>
+                    <select id="userRole" required class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-purple-500">
+                        <option value="">-- اختر الصلاحية --</option>
+                        <option value="admin">المشرف العام</option>
+                        <option value="manager">مدير فرع</option>
+                        <option value="field_user">عامل ميداني</option>
+                    </select>
+                </div>
+                <div id="userBranchContainer">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">الفرع</label>
+                    <select id="userBranch" class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-purple-500">
+                        <option value="">-- اختر الفرع --</option>
+                    </select>
+                </div>
+                <div class="flex gap-4 pt-4">
+                    <button type="submit" class="flex-1 bg-purple-600 text-white py-3 rounded-xl font-semibold hover:bg-purple-700 transition-colors">
+                        <i class="fas fa-save ml-2"></i>حفظ المستخدم
+                    </button>
+                    <button type="button" onclick="closeUserModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold hover:bg-gray-300 transition-colors">
+                        إلغاء
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Branch Modal -->
+    <div id="branchModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full">
+            <div class="bg-gradient-to-r from-teal-600 to-teal-800 text-white p-6 flex items-center justify-between">
+                <h2 class="text-xl font-bold"><i class="fas fa-code-branch ml-2"></i>إضافة فرع</h2>
+                <button onclick="closeBranchModal()" class="hover:bg-white/20 p-2 rounded-lg transition-colors">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="branchForm" onsubmit="handleBranchSubmit(event)" class="p-6 space-y-4">
+                <input type="hidden" id="editBranchId">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">اسم الفرع *</label>
+                    <input type="text" id="branchName" required class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-teal-500" placeholder="مثال: فرع الرياض">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">رمز الفرع *</label>
+                    <input type="text" id="branchCode" required class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-teal-500" placeholder="مثال: RYD" maxlength="5">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">العنوان</label>
+                    <input type="text" id="branchAddress" class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-teal-500" placeholder="العنوان الكامل">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">رقم الهاتف</label>
+                    <input type="tel" id="branchPhone" class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-teal-500" placeholder="0XXXXXXXXX">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">مدير الفرع</label>
+                    <select id="branchManager" class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-teal-500">
+                        <option value="">-- اختر المدير --</option>
+                    </select>
+                </div>
+                <div class="flex gap-4 pt-4">
+                    <button type="submit" class="flex-1 bg-teal-600 text-white py-3 rounded-xl font-semibold hover:bg-teal-700 transition-colors">
+                        <i class="fas fa-save ml-2"></i>حفظ الفرع
+                    </button>
+                    <button type="button" onclick="closeBranchModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold hover:bg-gray-300 transition-colors">
+                        إلغاء
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
     <!-- Toast Notification -->
     <div id="toast" class="fixed bottom-4 left-4 bg-gray-800 text-white px-6 py-3 rounded-xl shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 z-50">
         <div class="flex items-center gap-3">
@@ -1545,7 +2083,130 @@
         </div>
     </div>
     
+    <!-- Firebase SDK (Optional - for cloud sync) -->
+    <!-- <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script> -->
+    <!-- <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script> -->
+    <!-- <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script> -->
+    <!-- <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script> -->
+    
+    <!-- New Modules -->
+    <script src="js/firebase-config.js"></script>
+    <script src="js/audit-sessions.js"></script>
+    <script src="js/geolocation.js"></script>
+    <script src="js/photo-album.js"></script>
+    <script src="js/export-enhanced.js"></script>
+    <script src="js/notifications.js"></script>
+    
     <!-- Custom JavaScript -->
     <script src="js/app.js"></script>
+    
+    <!-- Authentication Check -->
+    <script>
+        // Check authentication on page load
+        document.addEventListener('DOMContentLoaded', async function() {
+            // Wait for DB to initialize
+            setTimeout(async () => {
+                try {
+                    const sessionData = localStorage.getItem('auth_session');
+                    if (!sessionData) {
+                        window.location.href = 'login.html';
+                        return;
+                    }
+                    
+                    const session = JSON.parse(sessionData);
+                    if (new Date(session.expiresAt) < new Date()) {
+                        localStorage.removeItem('auth_session');
+                        window.location.href = 'login.html';
+                        return;
+                    }
+                    
+                    // Initialize auth state
+                    if (typeof AUTH_STATE !== 'undefined') {
+                        AUTH_STATE.isAuthenticated = true;
+                        AUTH_STATE.userRole = session.userRole;
+                        AUTH_STATE.userBranch = session.userBranch;
+                        AUTH_STATE.currentUser = { 
+                            id: session.userId, 
+                            name: session.userName,
+                            role: session.userRole,
+                            branch: session.userBranch
+                        };
+                        
+                        // Update UI based on role
+                        updateUIForRole();
+                        
+                        // Initialize notifications
+                        if (typeof initializeNotifications === 'function') {
+                            await initializeNotifications();
+                        }
+                        
+                        // Initialize geolocation
+                        if (typeof initializeGeolocation === 'function') {
+                            initializeGeolocation();
+                        }
+                    }
+                } catch (e) {
+                    console.error('Auth check error:', e);
+                }
+            }, 500);
+        });
+        
+        // Update UI based on user role
+        function updateUIForRole() {
+            const role = AUTH_STATE?.userRole;
+            
+            // Update user display in sidebar
+            const userDisplay = document.querySelector('.inventory-person-display');
+            if (userDisplay && AUTH_STATE?.currentUser?.name) {
+                userDisplay.textContent = AUTH_STATE.currentUser.name;
+            }
+            
+            // Show/hide elements based on role
+            const adminOnlyElements = document.querySelectorAll('[data-role="admin"]');
+            const managerOnlyElements = document.querySelectorAll('[data-role="manager"]');
+            const fieldOnlyElements = document.querySelectorAll('[data-role="field_user"]');
+            
+            adminOnlyElements.forEach(el => {
+                el.style.display = role === 'admin' ? '' : 'none';
+            });
+            
+            managerOnlyElements.forEach(el => {
+                el.style.display = (role === 'admin' || role === 'manager') ? '' : 'none';
+            });
+            
+            // Add role badge
+            const roleBadge = document.createElement('div');
+            roleBadge.className = 'text-xs px-2 py-1 rounded-full mt-1 ' + getRoleBadgeClassLocal(role);
+            roleBadge.textContent = getRoleNameLocal(role);
+            
+            const sidebarUser = document.querySelector('.bg-white\\/10.rounded-xl.p-4');
+            if (sidebarUser && !sidebarUser.querySelector('.role-badge')) {
+                roleBadge.classList.add('role-badge');
+                sidebarUser.appendChild(roleBadge);
+            }
+        }
+        
+        function getRoleNameLocal(role) {
+            const names = { admin: 'المشرف العام', manager: 'مدير فرع', field_user: 'عامل ميداني' };
+            return names[role] || role;
+        }
+        
+        function getRoleBadgeClassLocal(role) {
+            const classes = {
+                admin: 'bg-purple-500 text-white',
+                manager: 'bg-blue-500 text-white',
+                field_user: 'bg-green-500 text-white'
+            };
+            return classes[role] || 'bg-gray-500 text-white';
+        }
+        
+        // Logout function
+        async function handleLogout() {
+            if (confirm('هل تريد تسجيل الخروج؟')) {
+                localStorage.removeItem('auth_session');
+                window.location.href = 'login.html';
+            }
+        }
+    </script>
 </body>
 </html>

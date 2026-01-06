@@ -1,546 +1,656 @@
 /**
- * Photo Album Manager
- * نظام إدارة ألبوم الصور للأصول مع Firebase Storage
+ * Photo Album Module
+ * نظام ألبوم الصور للأصول
+ * Version 6.0
  */
 
-// Photo Album State
-const PHOTO_ALBUM_STATE = {
-    currentAlbum: [],
-    uploadQueue: [],
-    isUploading: false
+// === Photo Album State ===
+const PHOTO_STATE = {
+    maxPhotosPerAsset: 10,
+    maxPhotoSize: 5 * 1024 * 1024, // 5MB
+    allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
+    compressionQuality: 0.8,
+    thumbnailSize: 200
 };
 
-// Supported image types
-const SUPPORTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
-const THUMBNAIL_SIZE = 200;
-
-/**
- * Initialize Photo Album Manager
- */
-function initPhotoAlbumManager() {
-    setupImageUploadListeners();
-    setupDragAndDrop();
+// === Initialize Photo Album System ===
+function initializePhotoAlbum() {
+    console.log('Photo album system initialized');
 }
 
-/**
- * Setup image upload listeners
- */
-function setupImageUploadListeners() {
-    const fileInputs = document.querySelectorAll('.photo-upload-input');
-    fileInputs.forEach(input => {
-        input.addEventListener('change', handleFileSelect);
-    });
-}
-
-/**
- * Setup drag and drop for images
- */
-function setupDragAndDrop() {
-    const dropZones = document.querySelectorAll('.photo-drop-zone');
-    
-    dropZones.forEach(zone => {
-        zone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            zone.classList.add('drag-over');
-        });
-
-        zone.addEventListener('dragleave', () => {
-            zone.classList.remove('drag-over');
-        });
-
-        zone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            zone.classList.remove('drag-over');
+// === Capture Photo from Camera ===
+async function capturePhoto() {
+    return new Promise((resolve, reject) => {
+        // Create hidden input
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.capture = 'environment'; // Use back camera on mobile
+        
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) {
+                reject(new Error('لم يتم اختيار صورة'));
+                return;
+            }
             
-            const files = e.dataTransfer.files;
-            handleFiles(files);
-        });
+            try {
+                const processedImage = await processImage(file);
+                resolve(processedImage);
+            } catch (error) {
+                reject(error);
+            }
+        };
+        
+        input.click();
     });
 }
 
-/**
- * Handle file selection
- */
-function handleFileSelect(e) {
-    const files = e.target.files;
-    handleFiles(files);
+// === Select Photos from Gallery ===
+async function selectPhotos(multiple = true) {
+    return new Promise((resolve, reject) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.multiple = multiple;
+        
+        input.onchange = async (e) => {
+            const files = Array.from(e.target.files);
+            if (files.length === 0) {
+                reject(new Error('لم يتم اختيار صور'));
+                return;
+            }
+            
+            try {
+                const processedImages = [];
+                for (const file of files) {
+                    const processed = await processImage(file);
+                    processedImages.push(processed);
+                }
+                resolve(processedImages);
+            } catch (error) {
+                reject(error);
+            }
+        };
+        
+        input.click();
+    });
 }
 
-/**
- * Handle multiple files
- */
-async function handleFiles(files) {
-    const validFiles = [];
-    
-    for (const file of files) {
+// === Process Image (Resize & Compress) ===
+async function processImage(file) {
+    return new Promise((resolve, reject) => {
         // Validate file type
-        if (!SUPPORTED_IMAGE_TYPES.includes(file.type)) {
-            showToast(`نوع الملف غير مدعوم: ${file.name}`, 'error');
-            continue;
+        if (!PHOTO_STATE.allowedTypes.includes(file.type)) {
+            reject(new Error('نوع الملف غير مدعوم'));
+            return;
         }
         
         // Validate file size
-        if (file.size > MAX_IMAGE_SIZE) {
-            showToast(`حجم الملف كبير جداً: ${file.name}`, 'error');
-            continue;
+        if (file.size > PHOTO_STATE.maxPhotoSize) {
+            reject(new Error('حجم الصورة كبير جداً (الحد الأقصى 5MB)'));
+            return;
         }
         
-        validFiles.push(file);
-    }
-
-    if (validFiles.length > 0) {
-        await processImages(validFiles);
-    }
-}
-
-/**
- * Process images for upload
- */
-async function processImages(files) {
-    showLoading();
-    
-    for (const file of files) {
-        try {
-            // Create preview
-            const preview = await createImagePreview(file);
+        const reader = new FileReader();
+        
+        reader.onload = (e) => {
+            const img = new Image();
             
-            // Compress image if needed
-            const compressedBlob = await compressImage(file);
-            
-            // Create photo object
-            const photo = {
-                id: generateId(),
-                originalName: file.name,
-                type: file.type,
-                size: compressedBlob.size,
-                blob: compressedBlob,
-                preview: preview,
-                uploadStatus: 'pending',
-                createdAt: new Date().toISOString()
+            img.onload = () => {
+                // Create canvas for resizing
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // Calculate new dimensions (max 1920px width/height)
+                const maxSize = 1920;
+                let width = img.width;
+                let height = img.height;
+                
+                if (width > maxSize || height > maxSize) {
+                    if (width > height) {
+                        height = (height * maxSize) / width;
+                        width = maxSize;
+                    } else {
+                        width = (width * maxSize) / height;
+                        height = maxSize;
+                    }
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                
+                // Draw and compress
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Get compressed data URL
+                const dataUrl = canvas.toDataURL('image/jpeg', PHOTO_STATE.compressionQuality);
+                
+                // Create thumbnail
+                const thumbCanvas = document.createElement('canvas');
+                const thumbCtx = thumbCanvas.getContext('2d');
+                const thumbSize = PHOTO_STATE.thumbnailSize;
+                
+                // Square thumbnail
+                const size = Math.min(img.width, img.height);
+                const sx = (img.width - size) / 2;
+                const sy = (img.height - size) / 2;
+                
+                thumbCanvas.width = thumbSize;
+                thumbCanvas.height = thumbSize;
+                thumbCtx.drawImage(img, sx, sy, size, size, 0, 0, thumbSize, thumbSize);
+                
+                const thumbnail = thumbCanvas.toDataURL('image/jpeg', 0.6);
+                
+                resolve({
+                    id: generatePhotoId(),
+                    dataUrl,
+                    thumbnail,
+                    width,
+                    height,
+                    originalName: file.name,
+                    size: Math.round(dataUrl.length * 0.75), // Approximate size
+                    mimeType: 'image/jpeg',
+                    capturedAt: new Date().toISOString(),
+                    capturedBy: AUTH_STATE.currentUser?.id,
+                    capturedByName: AUTH_STATE.currentUser?.name
+                });
             };
             
-            APP_STATE.uploadedImages.push(photo);
-            renderImagePreviews();
-            
-        } catch (error) {
-            console.error('Error processing image:', error);
-            showToast(`فشل معالجة الصورة: ${file.name}`, 'error');
-        }
-    }
-    
-    hideLoading();
-}
-
-/**
- * Create image preview as data URL
- */
-function createImagePreview(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target.result);
-        reader.onerror = reject;
+            img.onerror = () => reject(new Error('فشل تحميل الصورة'));
+            img.src = e.target.result;
+        };
+        
+        reader.onerror = () => reject(new Error('فشل قراءة الملف'));
         reader.readAsDataURL(file);
     });
 }
 
-/**
- * Compress image using canvas
- */
-async function compressImage(file, maxWidth = 1920, quality = 0.8) {
-    return new Promise((resolve) => {
-        const img = new Image();
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-
-        img.onload = () => {
-            let width = img.width;
-            let height = img.height;
-
-            // Scale down if needed
-            if (width > maxWidth) {
-                height = (height * maxWidth) / width;
-                width = maxWidth;
-            }
-
-            canvas.width = width;
-            canvas.height = height;
-            ctx.drawImage(img, 0, 0, width, height);
-
-            canvas.toBlob(
-                (blob) => resolve(blob),
-                'image/jpeg',
-                quality
-            );
-        };
-
-        img.src = URL.createObjectURL(file);
-    });
+// === Generate Photo ID ===
+function generatePhotoId() {
+    return `photo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
-/**
- * Upload images to Firebase Storage
- */
-async function uploadImagesToFirebase(assetId, images) {
-    if (!isFirebaseReady()) {
-        // Store locally if Firebase not available
-        return await storeImagesLocally(assetId, images);
-    }
-
-    const { ref, uploadBytes, getDownloadURL } = window.FirebaseModules.storage;
-    const uploadedImages = [];
-
-    for (const image of images) {
-        try {
-            // Create storage reference
-            const imagePath = `assets/${assetId}/${image.id}_${Date.now()}.jpg`;
-            const storageRef = ref(getFirebaseStorage(), imagePath);
-
-            // Upload image
-            await uploadBytes(storageRef, image.blob);
-
-            // Get download URL
-            const downloadURL = await getDownloadURL(storageRef);
-
-            uploadedImages.push({
-                id: image.id,
-                url: downloadURL,
-                path: imagePath,
-                name: image.originalName,
-                size: image.size,
-                uploadedAt: new Date().toISOString()
-            });
-
-            image.uploadStatus = 'uploaded';
-            image.url = downloadURL;
-            image.path = imagePath;
-
-        } catch (error) {
-            console.error('Upload error:', error);
-            image.uploadStatus = 'failed';
-            showToast(`فشل رفع الصورة: ${image.originalName}`, 'error');
-        }
-    }
-
-    return uploadedImages;
-}
-
-/**
- * Store images locally when Firebase is unavailable
- */
-async function storeImagesLocally(assetId, images) {
-    const storedImages = [];
-
-    for (const image of images) {
-        try {
-            // Convert blob to base64 for storage
-            const base64 = await blobToBase64(image.blob);
-            
-            const storedImage = {
-                id: image.id,
-                assetId: assetId,
-                base64: base64,
-                name: image.originalName,
-                size: image.size,
-                type: image.type,
-                storedLocally: true,
-                createdAt: new Date().toISOString()
-            };
-
-            // Store in IndexedDB
-            await dbPut('assetPhotos', storedImage);
-            storedImages.push(storedImage);
-
-            // Queue for upload when online
-            await queueForSync('create', 'assetPhotos', storedImage);
-
-        } catch (error) {
-            console.error('Error storing image locally:', error);
-        }
-    }
-
-    return storedImages;
-}
-
-/**
- * Convert blob to base64
- */
-function blobToBase64(blob) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-    });
-}
-
-/**
- * Delete image from Firebase Storage
- */
-async function deleteImageFromFirebase(imagePath) {
-    if (!isFirebaseReady()) {
-        showToast('لا يمكن الحذف بدون اتصال', 'warning');
-        return false;
-    }
-
-    try {
-        const { ref, deleteObject } = window.FirebaseModules.storage;
-        const imageRef = ref(getFirebaseStorage(), imagePath);
-        await deleteObject(imageRef);
-        return true;
-    } catch (error) {
-        console.error('Delete error:', error);
-        return false;
-    }
-}
-
-/**
- * Render image previews in the upload area
- */
-function renderImagePreviews() {
-    const container = document.getElementById('imagePreviewContainer');
-    if (!container) return;
-
-    if (APP_STATE.uploadedImages.length === 0) {
-        container.innerHTML = '';
-        return;
-    }
-
-    container.innerHTML = APP_STATE.uploadedImages.map((image, index) => `
-        <div class="relative group" data-image-id="${image.id}">
-            <img src="${image.preview || image.url}" 
-                 alt="صورة ${index + 1}" 
-                 class="w-24 h-24 object-cover rounded-lg border-2 ${
-                     image.uploadStatus === 'uploaded' ? 'border-green-500' :
-                     image.uploadStatus === 'failed' ? 'border-red-500' :
-                     'border-gray-300'
-                 }">
-            <button onclick="removeUploadedImage('${image.id}')"
-                    class="absolute -top-2 -right-2 bg-red-500 text-white w-6 h-6 rounded-full 
-                           opacity-0 group-hover:opacity-100 transition-opacity text-sm">
-                <i class="fas fa-times"></i>
-            </button>
-            ${image.uploadStatus === 'pending' ? `
-                <div class="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center">
-                    <i class="fas fa-spinner fa-spin text-white"></i>
-                </div>
-            ` : ''}
-            ${image.uploadStatus === 'uploaded' ? `
-                <div class="absolute bottom-1 right-1 bg-green-500 text-white text-xs px-1 rounded">
-                    <i class="fas fa-check"></i>
-                </div>
-            ` : ''}
-        </div>
-    `).join('');
-}
-
-/**
- * Remove uploaded image from list
- */
-function removeUploadedImage(imageId) {
-    const index = APP_STATE.uploadedImages.findIndex(img => img.id === imageId);
-    if (index > -1) {
-        APP_STATE.uploadedImages.splice(index, 1);
-        renderImagePreviews();
-    }
-}
-
-/**
- * Clear all uploaded images
- */
-function clearUploadedImages() {
-    APP_STATE.uploadedImages = [];
-    renderImagePreviews();
-}
-
-/**
- * Get album for an asset
- */
-async function getAssetAlbum(assetId) {
-    const asset = APP_STATE.assets.find(a => a.id === assetId);
-    if (!asset) return [];
-
-    return asset.images || [];
-}
-
-/**
- * Generate album link for asset
- */
-function generateAlbumLink(assetId) {
-    // This would be a link to view all photos for this asset
-    return `${window.location.origin}${window.location.pathname}#album/${assetId}`;
-}
-
-/**
- * Render photo album modal
- */
-function showPhotoAlbum(assetId) {
-    const asset = APP_STATE.assets.find(a => a.id === assetId);
-    if (!asset || !asset.images || asset.images.length === 0) {
-        showToast('لا توجد صور لهذا الأصل', 'info');
-        return;
-    }
-
-    const modalContent = `
-        <div class="p-4">
-            <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-bold">صور ${asset.name}</h3>
-                <span class="text-sm text-gray-500">${asset.images.length} صورة</span>
-            </div>
-            
-            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                ${asset.images.map((img, index) => `
-                    <div class="relative aspect-square cursor-pointer" onclick="showFullImage('${img.url}')">
-                        <img src="${img.url}" 
-                             alt="صورة ${index + 1}" 
-                             class="w-full h-full object-cover rounded-lg shadow">
-                        <div class="absolute inset-0 bg-black/0 hover:bg-black/30 transition-colors rounded-lg
-                                    flex items-center justify-center opacity-0 hover:opacity-100">
-                            <i class="fas fa-search-plus text-white text-2xl"></i>
-                        </div>
-                    </div>
-                `).join('')}
-            </div>
-            
-            <div class="mt-4 text-center">
-                <button onclick="downloadAllPhotos('${assetId}')" 
-                        class="bg-gov-blue text-white px-4 py-2 rounded-lg hover:bg-gov-blue-light">
-                    <i class="fas fa-download ml-2"></i> تحميل جميع الصور
-                </button>
-            </div>
-        </div>
-    `;
-
-    showCustomModal('ألبوم الصور', modalContent);
-}
-
-/**
- * Show full size image
- */
-function showFullImage(imageUrl) {
-    const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 bg-black/90 z-50 flex items-center justify-center';
-    modal.innerHTML = `
-        <button class="absolute top-4 left-4 text-white text-2xl hover:text-gray-300"
-                onclick="this.parentElement.remove()">
-            <i class="fas fa-times"></i>
-        </button>
-        <img src="${imageUrl}" alt="صورة" class="max-w-full max-h-full object-contain">
-        <a href="${imageUrl}" download class="absolute bottom-4 left-4 text-white hover:text-gray-300">
-            <i class="fas fa-download text-xl"></i>
-        </a>
-    `;
+// === Create Photo Album for Asset ===
+async function createPhotoAlbum(assetId, photos = []) {
+    const album = {
+        id: `album-${assetId}`,
+        assetId,
+        photos: photos.map((photo, index) => ({
+            ...photo,
+            order: index
+        })),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+    };
     
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) modal.remove();
-    });
+    await dbPut('photoAlbums', album);
+    return album;
+}
+
+// === Get Photo Album ===
+async function getPhotoAlbum(assetId) {
+    return await dbGet('photoAlbums', `album-${assetId}`);
+}
+
+// === Add Photo to Album ===
+async function addPhotoToAlbum(assetId, photo) {
+    let album = await getPhotoAlbum(assetId);
     
-    document.body.appendChild(modal);
-}
-
-/**
- * Download all photos for an asset
- */
-async function downloadAllPhotos(assetId) {
-    const asset = APP_STATE.assets.find(a => a.id === assetId);
-    if (!asset || !asset.images) return;
-
-    showToast('جاري تجهيز الصور للتحميل...', 'info');
-
-    // Download each image
-    for (let i = 0; i < asset.images.length; i++) {
-        const img = asset.images[i];
-        try {
-            const response = await fetch(img.url);
-            const blob = await response.blob();
-            const url = URL.createObjectURL(blob);
-            
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${asset.name}_photo_${i + 1}.jpg`;
-            a.click();
-            
-            URL.revokeObjectURL(url);
-        } catch (error) {
-            console.error('Error downloading image:', error);
+    if (!album) {
+        album = await createPhotoAlbum(assetId, [photo]);
+    } else {
+        if (album.photos.length >= PHOTO_STATE.maxPhotosPerAsset) {
+            throw new Error(`لا يمكن إضافة أكثر من ${PHOTO_STATE.maxPhotosPerAsset} صور للأصل`);
         }
-    }
-
-    showToast('تم تحميل الصور', 'success');
-}
-
-/**
- * Take photo using camera
- */
-async function capturePhoto() {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: 'environment' } 
+        
+        album.photos.push({
+            ...photo,
+            order: album.photos.length
         });
+        album.updatedAt = new Date().toISOString();
         
-        // Create video element
-        const video = document.createElement('video');
-        video.srcObject = stream;
-        video.play();
-        
-        // Create capture modal
-        const modal = document.createElement('div');
-        modal.className = 'fixed inset-0 bg-black z-50 flex flex-col items-center justify-center';
-        modal.innerHTML = `
-            <video autoplay playsinline class="max-w-full max-h-[70vh]"></video>
-            <div class="mt-4 flex gap-4">
-                <button id="captureBtn" class="bg-white text-black px-6 py-3 rounded-full text-lg">
-                    <i class="fas fa-camera"></i> التقاط
-                </button>
-                <button id="cancelCaptureBtn" class="bg-red-500 text-white px-6 py-3 rounded-full text-lg">
-                    <i class="fas fa-times"></i> إلغاء
-                </button>
+        await dbPut('photoAlbums', album);
+    }
+    
+    return album;
+}
+
+// === Remove Photo from Album ===
+async function removePhotoFromAlbum(assetId, photoId) {
+    const album = await getPhotoAlbum(assetId);
+    
+    if (!album) {
+        throw new Error('الألبوم غير موجود');
+    }
+    
+    album.photos = album.photos.filter(p => p.id !== photoId);
+    album.photos.forEach((photo, index) => {
+        photo.order = index;
+    });
+    album.updatedAt = new Date().toISOString();
+    
+    await dbPut('photoAlbums', album);
+    return album;
+}
+
+// === Reorder Photos in Album ===
+async function reorderPhotos(assetId, photoIds) {
+    const album = await getPhotoAlbum(assetId);
+    
+    if (!album) {
+        throw new Error('الألبوم غير موجود');
+    }
+    
+    const reorderedPhotos = [];
+    for (let i = 0; i < photoIds.length; i++) {
+        const photo = album.photos.find(p => p.id === photoIds[i]);
+        if (photo) {
+            photo.order = i;
+            reorderedPhotos.push(photo);
+        }
+    }
+    
+    album.photos = reorderedPhotos;
+    album.updatedAt = new Date().toISOString();
+    
+    await dbPut('photoAlbums', album);
+    return album;
+}
+
+// === Generate Album Viewer URL ===
+function generateAlbumViewerUrl(assetId) {
+    const baseUrl = window.location.origin + window.location.pathname;
+    return `${baseUrl}?view=album&asset=${assetId}`;
+}
+
+// === Render Photo Gallery ===
+function renderPhotoGallery(containerId, photos, options = {}) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    
+    const {
+        editable = false,
+        onDelete = null,
+        onReorder = null,
+        showCaptions = true
+    } = options;
+    
+    if (!photos || photos.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-8 text-gray-500">
+                <i class="fas fa-images text-4xl mb-2"></i>
+                <p>لا توجد صور</p>
             </div>
         `;
+        return;
+    }
+    
+    container.innerHTML = `
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            ${photos.map((photo, index) => `
+                <div class="photo-item relative group rounded-lg overflow-hidden shadow-md cursor-pointer" 
+                     data-photo-id="${photo.id}"
+                     onclick="openPhotoViewer('${photo.id}', ${JSON.stringify(photos.map(p => p.id)).replace(/"/g, '&quot;')})">
+                    <img src="${photo.thumbnail || photo.dataUrl}" 
+                         alt="صورة ${index + 1}"
+                         class="w-full h-40 object-cover transition-transform group-hover:scale-110">
+                    
+                    <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all"></div>
+                    
+                    ${editable ? `
+                        <button onclick="event.stopPropagation(); deletePhoto('${photo.id}')"
+                                class="absolute top-2 right-2 w-8 h-8 bg-red-500 text-white rounded-full 
+                                       opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <i class="fas fa-trash text-sm"></i>
+                        </button>
+                    ` : ''}
+                    
+                    <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2">
+                        <span class="text-white text-xs">${index + 1}/${photos.length}</span>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// === Open Photo Viewer (Lightbox) ===
+function openPhotoViewer(photoId, allPhotoIds) {
+    // Get all photos data
+    const photos = allPhotoIds.map(id => {
+        const elem = document.querySelector(`[data-photo-id="${id}"]`);
+        return elem ? { id } : null;
+    }).filter(p => p);
+    
+    const currentIndex = allPhotoIds.indexOf(photoId);
+    
+    // Create lightbox
+    const lightbox = document.createElement('div');
+    lightbox.id = 'photoLightbox';
+    lightbox.className = 'fixed inset-0 z-50 bg-black bg-opacity-95 flex items-center justify-center';
+    
+    lightbox.innerHTML = `
+        <div class="absolute top-4 right-4 z-10">
+            <button onclick="closeLightbox()" class="text-white text-2xl p-2 hover:bg-white/10 rounded-full">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
         
-        document.body.appendChild(modal);
-        modal.querySelector('video').srcObject = stream;
+        <div class="absolute top-4 left-4 z-10 text-white">
+            <span id="lightboxCounter">${currentIndex + 1} / ${allPhotoIds.length}</span>
+        </div>
         
-        // Handle capture
-        modal.querySelector('#captureBtn').onclick = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            canvas.getContext('2d').drawImage(video, 0, 0);
-            
-            canvas.toBlob(async (blob) => {
-                const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
-                await handleFiles([file]);
-            }, 'image/jpeg', 0.9);
-            
-            // Cleanup
-            stream.getTracks().forEach(track => track.stop());
-            modal.remove();
-        };
+        <button onclick="lightboxPrev()" 
+                class="absolute left-4 top-1/2 -translate-y-1/2 text-white text-3xl p-4 hover:bg-white/10 rounded-full ${currentIndex === 0 ? 'opacity-30' : ''}">
+            <i class="fas fa-chevron-left"></i>
+        </button>
         
-        // Handle cancel
-        modal.querySelector('#cancelCaptureBtn').onclick = () => {
-            stream.getTracks().forEach(track => track.stop());
-            modal.remove();
-        };
+        <button onclick="lightboxNext()" 
+                class="absolute right-4 top-1/2 -translate-y-1/2 text-white text-3xl p-4 hover:bg-white/10 rounded-full ${currentIndex === allPhotoIds.length - 1 ? 'opacity-30' : ''}">
+            <i class="fas fa-chevron-right"></i>
+        </button>
         
-    } catch (error) {
-        console.error('Camera error:', error);
-        showToast('فشل الوصول للكاميرا', 'error');
+        <div id="lightboxImageContainer" class="max-w-full max-h-full p-4">
+            <img id="lightboxImage" src="" alt="" class="max-w-full max-h-[85vh] object-contain">
+        </div>
+        
+        <div class="absolute bottom-4 left-0 right-0 flex justify-center gap-2">
+            <button onclick="downloadCurrentPhoto()" class="bg-white/10 text-white px-4 py-2 rounded-lg hover:bg-white/20">
+                <i class="fas fa-download ml-2"></i>
+                تحميل
+            </button>
+            <button onclick="shareCurrentPhoto()" class="bg-white/10 text-white px-4 py-2 rounded-lg hover:bg-white/20">
+                <i class="fas fa-share-alt ml-2"></i>
+                مشاركة
+            </button>
+        </div>
+    `;
+    
+    document.body.appendChild(lightbox);
+    document.body.style.overflow = 'hidden';
+    
+    // Store state
+    window.lightboxState = {
+        photos: allPhotoIds,
+        currentIndex,
+        getPhotoSrc: (id) => {
+            const img = document.querySelector(`[data-photo-id="${id}"] img`);
+            return img ? img.src.replace('/thumbnail/', '/') : '';
+        }
+    };
+    
+    // Load current image
+    updateLightboxImage();
+    
+    // Keyboard navigation
+    document.addEventListener('keydown', lightboxKeyHandler);
+}
+
+function updateLightboxImage() {
+    const state = window.lightboxState;
+    if (!state) return;
+    
+    const currentId = state.photos[state.currentIndex];
+    const img = document.getElementById('lightboxImage');
+    const counter = document.getElementById('lightboxCounter');
+    
+    // Try to get full image from photo album state or fallback to thumbnail
+    const photoElem = document.querySelector(`[data-photo-id="${currentId}"] img`);
+    if (img && photoElem) {
+        // For now, use the same source; in production, this would fetch full-size
+        img.src = photoElem.src;
+    }
+    
+    if (counter) {
+        counter.textContent = `${state.currentIndex + 1} / ${state.photos.length}`;
     }
 }
 
-/**
- * Export Photo Album functions
- */
-window.PhotoAlbum = {
-    init: initPhotoAlbumManager,
-    handleFiles,
-    uploadToFirebase: uploadImagesToFirebase,
-    deleteFromFirebase: deleteImageFromFirebase,
-    getAlbum: getAssetAlbum,
-    showAlbum: showPhotoAlbum,
-    capturePhoto,
-    clear: clearUploadedImages,
-    generateAlbumLink
-};
+function lightboxPrev() {
+    const state = window.lightboxState;
+    if (!state || state.currentIndex <= 0) return;
+    
+    state.currentIndex--;
+    updateLightboxImage();
+}
+
+function lightboxNext() {
+    const state = window.lightboxState;
+    if (!state || state.currentIndex >= state.photos.length - 1) return;
+    
+    state.currentIndex++;
+    updateLightboxImage();
+}
+
+function closeLightbox() {
+    const lightbox = document.getElementById('photoLightbox');
+    if (lightbox) {
+        lightbox.remove();
+        document.body.style.overflow = '';
+        document.removeEventListener('keydown', lightboxKeyHandler);
+        window.lightboxState = null;
+    }
+}
+
+function lightboxKeyHandler(e) {
+    switch (e.key) {
+        case 'ArrowLeft':
+            lightboxNext(); // RTL
+            break;
+        case 'ArrowRight':
+            lightboxPrev(); // RTL
+            break;
+        case 'Escape':
+            closeLightbox();
+            break;
+    }
+}
+
+function downloadCurrentPhoto() {
+    const img = document.getElementById('lightboxImage');
+    if (!img || !img.src) return;
+    
+    const link = document.createElement('a');
+    link.href = img.src;
+    link.download = `photo-${Date.now()}.jpg`;
+    link.click();
+}
+
+async function shareCurrentPhoto() {
+    const img = document.getElementById('lightboxImage');
+    if (!img || !img.src) return;
+    
+    if (navigator.share) {
+        try {
+            await navigator.share({
+                title: 'صورة من نظام جرد الأصول',
+                text: 'صورة أصل',
+                url: img.src
+            });
+        } catch (e) {
+            console.log('Share cancelled');
+        }
+    } else {
+        // Copy URL to clipboard
+        copyToClipboard(img.src);
+        showToast('تم نسخ رابط الصورة', 'success');
+    }
+}
+
+// === Create Photo Upload Widget ===
+function createPhotoUploadWidget(containerId, options = {}) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    
+    const {
+        maxPhotos = PHOTO_STATE.maxPhotosPerAsset,
+        onPhotosChange = null,
+        initialPhotos = []
+    } = options;
+    
+    let photos = [...initialPhotos];
+    
+    container.innerHTML = `
+        <div class="photo-upload-widget">
+            <div id="photoPreviewGrid" class="grid grid-cols-3 gap-2 mb-4"></div>
+            
+            <div class="flex gap-2">
+                <button type="button" onclick="widgetCapturePhoto('${containerId}')"
+                        class="flex-1 bg-blue-600 text-white py-3 rounded-lg flex items-center justify-center gap-2 hover:bg-blue-700">
+                    <i class="fas fa-camera"></i>
+                    التقاط صورة
+                </button>
+                <button type="button" onclick="widgetSelectPhotos('${containerId}')"
+                        class="flex-1 bg-gray-100 text-gray-700 py-3 rounded-lg flex items-center justify-center gap-2 hover:bg-gray-200">
+                    <i class="fas fa-images"></i>
+                    اختيار من المعرض
+                </button>
+            </div>
+            
+            <p class="text-xs text-gray-500 mt-2 text-center">
+                الحد الأقصى ${maxPhotos} صور • كل صورة حتى 5MB
+            </p>
+        </div>
+    `;
+    
+    // Store widget state
+    container._photoWidget = {
+        photos,
+        maxPhotos,
+        onPhotosChange,
+        updatePreview: () => renderWidgetPreview(containerId)
+    };
+    
+    renderWidgetPreview(containerId);
+}
+
+function renderWidgetPreview(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container || !container._photoWidget) return;
+    
+    const { photos, maxPhotos } = container._photoWidget;
+    const grid = container.querySelector('#photoPreviewGrid');
+    
+    if (!grid) return;
+    
+    grid.innerHTML = photos.map((photo, index) => `
+        <div class="relative group">
+            <img src="${photo.thumbnail || photo.dataUrl}" 
+                 alt="صورة ${index + 1}"
+                 class="w-full h-24 object-cover rounded-lg">
+            <button type="button" 
+                    onclick="widgetRemovePhoto('${containerId}', ${index})"
+                    class="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full 
+                           opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <i class="fas fa-times text-xs"></i>
+            </button>
+        </div>
+    `).join('');
+    
+    // Add empty slots
+    const emptySlots = Math.min(3 - photos.length, maxPhotos - photos.length);
+    for (let i = 0; i < emptySlots; i++) {
+        grid.innerHTML += `
+            <div class="w-full h-24 border-2 border-dashed border-gray-300 rounded-lg 
+                        flex items-center justify-center text-gray-400">
+                <i class="fas fa-plus"></i>
+            </div>
+        `;
+    }
+}
+
+async function widgetCapturePhoto(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container || !container._photoWidget) return;
+    
+    const widget = container._photoWidget;
+    
+    if (widget.photos.length >= widget.maxPhotos) {
+        showToast(`الحد الأقصى ${widget.maxPhotos} صور`, 'warning');
+        return;
+    }
+    
+    try {
+        const photo = await capturePhoto();
+        widget.photos.push(photo);
+        widget.updatePreview();
+        
+        if (widget.onPhotosChange) {
+            widget.onPhotosChange(widget.photos);
+        }
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+async function widgetSelectPhotos(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container || !container._photoWidget) return;
+    
+    const widget = container._photoWidget;
+    const remaining = widget.maxPhotos - widget.photos.length;
+    
+    if (remaining <= 0) {
+        showToast(`الحد الأقصى ${widget.maxPhotos} صور`, 'warning');
+        return;
+    }
+    
+    try {
+        const photos = await selectPhotos(true);
+        const toAdd = photos.slice(0, remaining);
+        widget.photos.push(...toAdd);
+        widget.updatePreview();
+        
+        if (widget.onPhotosChange) {
+            widget.onPhotosChange(widget.photos);
+        }
+        
+        if (photos.length > remaining) {
+            showToast(`تم إضافة ${toAdd.length} صور فقط (الحد الأقصى ${widget.maxPhotos})`, 'info');
+        }
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+function widgetRemovePhoto(containerId, index) {
+    const container = document.getElementById(containerId);
+    if (!container || !container._photoWidget) return;
+    
+    const widget = container._photoWidget;
+    widget.photos.splice(index, 1);
+    widget.updatePreview();
+    
+    if (widget.onPhotosChange) {
+        widget.onPhotosChange(widget.photos);
+    }
+}
+
+function getWidgetPhotos(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container || !container._photoWidget) return [];
+    
+    return container._photoWidget.photos;
+}
+
+// === Export for global access ===
+window.PHOTO_STATE = PHOTO_STATE;
+window.initializePhotoAlbum = initializePhotoAlbum;
+window.capturePhoto = capturePhoto;
+window.selectPhotos = selectPhotos;
+window.processImage = processImage;
+window.createPhotoAlbum = createPhotoAlbum;
+window.getPhotoAlbum = getPhotoAlbum;
+window.addPhotoToAlbum = addPhotoToAlbum;
+window.removePhotoFromAlbum = removePhotoFromAlbum;
+window.reorderPhotos = reorderPhotos;
+window.generateAlbumViewerUrl = generateAlbumViewerUrl;
+window.renderPhotoGallery = renderPhotoGallery;
+window.openPhotoViewer = openPhotoViewer;
+window.closeLightbox = closeLightbox;
+window.createPhotoUploadWidget = createPhotoUploadWidget;
+window.widgetCapturePhoto = widgetCapturePhoto;
+window.widgetSelectPhotos = widgetSelectPhotos;
+window.widgetRemovePhoto = widgetRemovePhoto;
+window.getWidgetPhotos = getWidgetPhotos;

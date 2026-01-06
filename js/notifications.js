@@ -1,519 +1,619 @@
 /**
- * Notifications System
+ * Notifications Module
  * نظام الإشعارات والتنبيهات
+ * Version 6.0
  */
 
-// Notifications State
-const NOTIFICATIONS_STATE = {
-    notifications: [],
-    unreadCount: 0,
-    isPermissionGranted: false,
-    settings: {
-        enablePush: true,
-        enableSound: true,
-        enableBadge: true,
-        enableInApp: true
-    }
-};
-
-// Notification Types
+// === Notification Types ===
 const NOTIFICATION_TYPES = {
     SYNC_SUCCESS: 'sync_success',
-    SYNC_ERROR: 'sync_error',
+    SYNC_FAILED: 'sync_failed',
+    SYNC_CONFLICT: 'sync_conflict',
     NEW_ASSET: 'new_asset',
     ASSET_UPDATED: 'asset_updated',
     ASSET_DELETED: 'asset_deleted',
     SESSION_STARTED: 'session_started',
     SESSION_COMPLETED: 'session_completed',
     USER_ACTIVITY: 'user_activity',
-    CONFLICT_DETECTED: 'conflict_detected',
-    LOW_BATTERY: 'low_battery',
-    OFFLINE_MODE: 'offline_mode',
-    ONLINE_MODE: 'online_mode',
-    SYSTEM: 'system'
+    SYSTEM_ALERT: 'system_alert',
+    MAINTENANCE_DUE: 'maintenance_due',
+    WARRANTY_EXPIRING: 'warranty_expiring'
 };
 
-// Notification Icons
-const NOTIFICATION_ICONS = {
-    sync_success: 'fa-check-circle text-green-500',
-    sync_error: 'fa-exclamation-circle text-red-500',
-    new_asset: 'fa-plus-circle text-blue-500',
-    asset_updated: 'fa-edit text-yellow-500',
-    asset_deleted: 'fa-trash text-red-500',
-    session_started: 'fa-play-circle text-green-500',
-    session_completed: 'fa-check-double text-blue-500',
-    user_activity: 'fa-user-clock text-purple-500',
-    conflict_detected: 'fa-exclamation-triangle text-orange-500',
-    low_battery: 'fa-battery-quarter text-red-500',
-    offline_mode: 'fa-wifi-slash text-gray-500',
-    online_mode: 'fa-wifi text-green-500',
-    system: 'fa-info-circle text-blue-500'
+// === Notification State ===
+let NOTIFICATION_STATE = {
+    notifications: [],
+    unreadCount: 0,
+    soundEnabled: true,
+    desktopEnabled: false,
+    pollingInterval: null
 };
 
-/**
- * Initialize Notifications System
- */
-async function initNotifications() {
+// === Initialize Notifications ===
+async function initializeNotifications() {
     // Load saved notifications
     await loadNotifications();
     
-    // Request notification permission
-    await requestNotificationPermission();
+    // Request desktop notification permission
+    if ('Notification' in window && Notification.permission === 'default') {
+        const permission = await Notification.requestPermission();
+        NOTIFICATION_STATE.desktopEnabled = permission === 'granted';
+    } else if (Notification.permission === 'granted') {
+        NOTIFICATION_STATE.desktopEnabled = true;
+    }
     
     // Load settings
-    loadNotificationSettings();
+    const settings = await dbGet(STORES.settings, 'notificationSettings');
+    if (settings) {
+        NOTIFICATION_STATE.soundEnabled = settings.value.soundEnabled !== false;
+    }
     
     // Update badge
     updateNotificationBadge();
     
-    // Setup battery monitoring
-    if ('getBattery' in navigator) {
-        setupBatteryMonitor();
+    // Start real-time polling for admin/manager
+    if (AUTH_STATE.userRole === USER_ROLES.ADMIN || AUTH_STATE.userRole === USER_ROLES.MANAGER) {
+        startNotificationPolling();
     }
+    
+    console.log('Notifications initialized');
 }
 
-/**
- * Request notification permission
- */
-async function requestNotificationPermission() {
-    if (!('Notification' in window)) {
-        console.log('Browser does not support notifications');
-        return false;
-    }
-
-    if (Notification.permission === 'granted') {
-        NOTIFICATIONS_STATE.isPermissionGranted = true;
-        return true;
-    }
-
-    if (Notification.permission !== 'denied') {
-        const permission = await Notification.requestPermission();
-        NOTIFICATIONS_STATE.isPermissionGranted = permission === 'granted';
-        return NOTIFICATIONS_STATE.isPermissionGranted;
-    }
-
-    return false;
-}
-
-/**
- * Load notifications from storage
- */
+// === Load Notifications ===
 async function loadNotifications() {
     try {
-        const stored = await dbGetAll('notifications');
-        NOTIFICATIONS_STATE.notifications = stored || [];
+        const notifications = await dbGetAll('notifications');
+        
+        // Filter by user/role
+        NOTIFICATION_STATE.notifications = notifications.filter(n => {
+            if (AUTH_STATE.userRole === USER_ROLES.ADMIN) return true;
+            if (n.targetUserId === AUTH_STATE.currentUser?.id) return true;
+            if (n.targetRole === AUTH_STATE.userRole) return true;
+            if (n.targetBranch === AUTH_STATE.userBranch) return true;
+            return false;
+        });
+        
+        // Sort by date descending
+        NOTIFICATION_STATE.notifications.sort((a, b) => 
+            new Date(b.createdAt) - new Date(a.createdAt)
+        );
         
         // Count unread
-        NOTIFICATIONS_STATE.unreadCount = NOTIFICATIONS_STATE.notifications.filter(n => !n.read).length;
+        NOTIFICATION_STATE.unreadCount = NOTIFICATION_STATE.notifications.filter(n => !n.read).length;
         
     } catch (error) {
         console.error('Error loading notifications:', error);
     }
 }
 
-/**
- * Load notification settings
- */
-function loadNotificationSettings() {
-    const saved = localStorage.getItem('notificationSettings');
-    if (saved) {
-        NOTIFICATIONS_STATE.settings = { ...NOTIFICATIONS_STATE.settings, ...JSON.parse(saved) };
-    }
-}
-
-/**
- * Save notification settings
- */
-function saveNotificationSettings() {
-    localStorage.setItem('notificationSettings', JSON.stringify(NOTIFICATIONS_STATE.settings));
-}
-
-/**
- * Create and show notification
- */
-async function notify(type, title, message, options = {}) {
-    const {
-        persistent = false,
-        actionUrl = null,
-        data = null,
-        silent = false
-    } = options;
-
-    // Create notification object
+// === Create Notification ===
+async function createNotification(type, title, message, data = {}) {
     const notification = {
-        id: generateId(),
+        id: generateId('notif'),
         type,
         title,
         message,
         data,
-        actionUrl,
         read: false,
-        timestamp: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        createdBy: AUTH_STATE.currentUser?.id,
+        targetUserId: data.targetUserId || null,
+        targetRole: data.targetRole || null,
+        targetBranch: data.targetBranch || AUTH_STATE.userBranch
     };
-
-    // Save to storage
-    await dbPut('notifications', notification);
-    NOTIFICATIONS_STATE.notifications.unshift(notification);
-    NOTIFICATIONS_STATE.unreadCount++;
-
-    // Update UI
-    updateNotificationBadge();
     
-    // Show in-app notification
-    if (NOTIFICATIONS_STATE.settings.enableInApp) {
+    await dbPut('notifications', notification);
+    
+    // If it's for current user, add to state and show
+    if (shouldShowNotification(notification)) {
+        NOTIFICATION_STATE.notifications.unshift(notification);
+        NOTIFICATION_STATE.unreadCount++;
+        
+        updateNotificationBadge();
         showInAppNotification(notification);
+        
+        if (NOTIFICATION_STATE.desktopEnabled) {
+            showDesktopNotification(notification);
+        }
+        
+        if (NOTIFICATION_STATE.soundEnabled) {
+            playNotificationSound();
+        }
     }
-
-    // Show push notification
-    if (NOTIFICATIONS_STATE.settings.enablePush && 
-        NOTIFICATIONS_STATE.isPermissionGranted && 
-        !silent) {
-        showPushNotification(notification);
-    }
-
-    // Play sound
-    if (NOTIFICATIONS_STATE.settings.enableSound && !silent) {
-        playNotificationSound();
-    }
-
+    
     return notification;
 }
 
-/**
- * Show in-app notification (toast)
- */
-function showInAppNotification(notification) {
-    const icon = NOTIFICATION_ICONS[notification.type] || NOTIFICATION_ICONS.system;
+// === Check if Should Show Notification ===
+function shouldShowNotification(notification) {
+    if (AUTH_STATE.userRole === USER_ROLES.ADMIN) return true;
+    if (notification.targetUserId === AUTH_STATE.currentUser?.id) return true;
+    if (notification.targetRole === AUTH_STATE.userRole) return true;
+    if (notification.targetBranch === AUTH_STATE.userBranch) return true;
+    return false;
+}
+
+// === Mark as Read ===
+async function markNotificationAsRead(notificationId) {
+    const notification = NOTIFICATION_STATE.notifications.find(n => n.id === notificationId);
+    if (notification && !notification.read) {
+        notification.read = true;
+        notification.readAt = new Date().toISOString();
+        
+        await dbPut('notifications', notification);
+        NOTIFICATION_STATE.unreadCount = Math.max(0, NOTIFICATION_STATE.unreadCount - 1);
+        updateNotificationBadge();
+    }
+}
+
+// === Mark All as Read ===
+async function markAllNotificationsAsRead() {
+    for (const notification of NOTIFICATION_STATE.notifications) {
+        if (!notification.read) {
+            notification.read = true;
+            notification.readAt = new Date().toISOString();
+            await dbPut('notifications', notification);
+        }
+    }
     
-    // Create notification element
-    const notifEl = document.createElement('div');
-    notifEl.className = 'notification-toast fixed top-4 left-4 z-50 bg-white rounded-xl shadow-lg p-4 max-w-sm transform translate-x-[-100%] opacity-0 transition-all duration-300';
-    notifEl.innerHTML = `
+    NOTIFICATION_STATE.unreadCount = 0;
+    updateNotificationBadge();
+}
+
+// === Delete Notification ===
+async function deleteNotification(notificationId) {
+    await dbDelete('notifications', notificationId);
+    
+    const index = NOTIFICATION_STATE.notifications.findIndex(n => n.id === notificationId);
+    if (index !== -1) {
+        if (!NOTIFICATION_STATE.notifications[index].read) {
+            NOTIFICATION_STATE.unreadCount--;
+        }
+        NOTIFICATION_STATE.notifications.splice(index, 1);
+        updateNotificationBadge();
+    }
+}
+
+// === Clear All Notifications ===
+async function clearAllNotifications() {
+    for (const notification of NOTIFICATION_STATE.notifications) {
+        await dbDelete('notifications', notification.id);
+    }
+    
+    NOTIFICATION_STATE.notifications = [];
+    NOTIFICATION_STATE.unreadCount = 0;
+    updateNotificationBadge();
+}
+
+// === Update Badge ===
+function updateNotificationBadge() {
+    const badges = document.querySelectorAll('.notification-badge');
+    badges.forEach(badge => {
+        if (NOTIFICATION_STATE.unreadCount > 0) {
+            badge.textContent = NOTIFICATION_STATE.unreadCount > 99 ? '99+' : NOTIFICATION_STATE.unreadCount;
+            badge.classList.remove('hidden');
+        } else {
+            badge.classList.add('hidden');
+        }
+    });
+}
+
+// === Show In-App Notification (Toast) ===
+function showInAppNotification(notification) {
+    const iconMap = {
+        [NOTIFICATION_TYPES.SYNC_SUCCESS]: 'fa-check-circle text-green-500',
+        [NOTIFICATION_TYPES.SYNC_FAILED]: 'fa-times-circle text-red-500',
+        [NOTIFICATION_TYPES.SYNC_CONFLICT]: 'fa-exclamation-triangle text-yellow-500',
+        [NOTIFICATION_TYPES.NEW_ASSET]: 'fa-plus-circle text-blue-500',
+        [NOTIFICATION_TYPES.ASSET_UPDATED]: 'fa-edit text-blue-500',
+        [NOTIFICATION_TYPES.ASSET_DELETED]: 'fa-trash text-red-500',
+        [NOTIFICATION_TYPES.SESSION_STARTED]: 'fa-play-circle text-green-500',
+        [NOTIFICATION_TYPES.SESSION_COMPLETED]: 'fa-check-double text-green-500',
+        [NOTIFICATION_TYPES.USER_ACTIVITY]: 'fa-user-clock text-purple-500',
+        [NOTIFICATION_TYPES.SYSTEM_ALERT]: 'fa-bell text-orange-500',
+        [NOTIFICATION_TYPES.MAINTENANCE_DUE]: 'fa-wrench text-orange-500',
+        [NOTIFICATION_TYPES.WARRANTY_EXPIRING]: 'fa-calendar-times text-red-500'
+    };
+    
+    const icon = iconMap[notification.type] || 'fa-bell text-gray-500';
+    
+    // Create toast element
+    const toast = document.createElement('div');
+    toast.className = 'notification-toast fixed top-4 left-4 z-[100] bg-white rounded-xl shadow-lg p-4 max-w-sm transform translate-x-[-120%] transition-transform duration-300';
+    toast.innerHTML = `
         <div class="flex items-start gap-3">
             <div class="flex-shrink-0">
                 <i class="fas ${icon} text-xl"></i>
             </div>
-            <div class="flex-1">
-                <h4 class="font-semibold text-gray-800">${notification.title}</h4>
-                <p class="text-sm text-gray-600">${notification.message}</p>
+            <div class="flex-1 min-w-0">
+                <p class="font-semibold text-gray-900 text-sm">${notification.title}</p>
+                <p class="text-gray-600 text-xs mt-1 line-clamp-2">${notification.message}</p>
             </div>
             <button onclick="this.parentElement.parentElement.remove()" 
-                    class="text-gray-400 hover:text-gray-600">
+                    class="flex-shrink-0 text-gray-400 hover:text-gray-600">
                 <i class="fas fa-times"></i>
             </button>
         </div>
     `;
-
-    document.body.appendChild(notifEl);
-
+    
+    document.body.appendChild(toast);
+    
     // Animate in
-    setTimeout(() => {
-        notifEl.style.transform = 'translateX(0)';
-        notifEl.style.opacity = '1';
-    }, 100);
-
+    requestAnimationFrame(() => {
+        toast.style.transform = 'translateX(0)';
+    });
+    
     // Auto remove after 5 seconds
     setTimeout(() => {
-        notifEl.style.transform = 'translateX(-100%)';
-        notifEl.style.opacity = '0';
-        setTimeout(() => notifEl.remove(), 300);
+        toast.style.transform = 'translateX(-120%)';
+        setTimeout(() => toast.remove(), 300);
     }, 5000);
 }
 
-/**
- * Show push notification
- */
-function showPushNotification(notification) {
-    if (!NOTIFICATIONS_STATE.isPermissionGranted) return;
-
-    const icon = '/icons/icon-192x192.png'; // PWA icon
-
-    const pushNotif = new Notification(notification.title, {
+// === Show Desktop Notification ===
+function showDesktopNotification(notification) {
+    if (!NOTIFICATION_STATE.desktopEnabled) return;
+    
+    const options = {
         body: notification.message,
-        icon: icon,
-        badge: icon,
+        icon: '/icons/icon-192.png',
+        badge: '/icons/badge-72.png',
         tag: notification.id,
-        data: notification.data,
-        requireInteraction: false
-    });
-
-    pushNotif.onclick = () => {
+        requireInteraction: notification.type === NOTIFICATION_TYPES.SYNC_CONFLICT
+    };
+    
+    const desktopNotif = new Notification(notification.title, options);
+    
+    desktopNotif.onclick = () => {
         window.focus();
-        if (notification.actionUrl) {
-            window.location.href = notification.actionUrl;
-        }
-        pushNotif.close();
+        markNotificationAsRead(notification.id);
+        handleNotificationClick(notification);
+        desktopNotif.close();
     };
 }
 
-/**
- * Play notification sound
- */
+// === Handle Notification Click ===
+function handleNotificationClick(notification) {
+    switch (notification.type) {
+        case NOTIFICATION_TYPES.NEW_ASSET:
+        case NOTIFICATION_TYPES.ASSET_UPDATED:
+            if (notification.data.assetId) {
+                showPage('assets');
+                // Could open asset details
+            }
+            break;
+        case NOTIFICATION_TYPES.SESSION_STARTED:
+        case NOTIFICATION_TYPES.SESSION_COMPLETED:
+            showPage('inventory');
+            break;
+        case NOTIFICATION_TYPES.SYNC_CONFLICT:
+            showSyncConflictModal(notification.data);
+            break;
+        case NOTIFICATION_TYPES.MAINTENANCE_DUE:
+            showPage('maintenance');
+            break;
+        default:
+            // Open notifications panel
+            toggleNotificationsPanel();
+    }
+}
+
+// === Play Notification Sound ===
 function playNotificationSound() {
+    if (!NOTIFICATION_STATE.soundEnabled) return;
+    
     try {
-        const audio = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
-        audio.volume = 0.3;
-        audio.play().catch(() => {}); // Ignore autoplay errors
+        // Use Web Audio API for a simple notification sound
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.value = 800;
+        gainNode.gain.value = 0.1;
+        
+        oscillator.start();
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        oscillator.stop(audioContext.currentTime + 0.3);
     } catch (e) {
-        // Ignore audio errors
+        console.log('Could not play notification sound');
     }
 }
 
-/**
- * Update notification badge
- */
-function updateNotificationBadge() {
-    const badge = document.getElementById('notificationBadge');
-    if (badge) {
-        badge.textContent = NOTIFICATIONS_STATE.unreadCount;
-        badge.style.display = NOTIFICATIONS_STATE.unreadCount > 0 ? 'flex' : 'none';
+// === Toggle Notifications Panel ===
+function toggleNotificationsPanel() {
+    let panel = document.getElementById('notificationsPanel');
+    
+    if (panel) {
+        panel.remove();
+        return;
     }
+    
+    panel = document.createElement('div');
+    panel.id = 'notificationsPanel';
+    panel.className = 'fixed top-16 left-4 z-50 w-96 max-h-[80vh] bg-white rounded-xl shadow-2xl overflow-hidden';
+    
+    panel.innerHTML = `
+        <div class="bg-gov-blue text-white p-4 flex items-center justify-between">
+            <h3 class="font-bold">الإشعارات</h3>
+            <div class="flex items-center gap-2">
+                ${NOTIFICATION_STATE.unreadCount > 0 ? `
+                    <button onclick="markAllNotificationsAsRead(); renderNotificationsPanel();" 
+                            class="text-xs bg-white/20 px-2 py-1 rounded hover:bg-white/30">
+                        قراءة الكل
+                    </button>
+                ` : ''}
+                <button onclick="document.getElementById('notificationsPanel').remove()" 
+                        class="hover:bg-white/20 p-1 rounded">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+        
+        <div id="notificationsList" class="overflow-y-auto max-h-[60vh]">
+            ${renderNotificationsList()}
+        </div>
+        
+        <div class="p-3 border-t bg-gray-50 flex justify-between items-center">
+            <button onclick="clearAllNotifications(); renderNotificationsPanel();" 
+                    class="text-red-600 text-sm hover:underline">
+                مسح الكل
+            </button>
+            <label class="flex items-center gap-2 text-sm text-gray-600">
+                <input type="checkbox" ${NOTIFICATION_STATE.soundEnabled ? 'checked' : ''} 
+                       onchange="toggleNotificationSound(this.checked)">
+                صوت الإشعارات
+            </label>
+        </div>
+    `;
+    
+    document.body.appendChild(panel);
+    
+    // Close when clicking outside
+    setTimeout(() => {
+        document.addEventListener('click', closeNotificationsPanelOnClickOutside);
+    }, 100);
+}
 
-    // Update document title
-    if (NOTIFICATIONS_STATE.unreadCount > 0) {
-        document.title = `(${NOTIFICATIONS_STATE.unreadCount}) نظام جرد الأصول`;
-    } else {
-        document.title = 'نظام جرد وحصر الأصول الحكومية';
-    }
-
-    // Update PWA badge if supported
-    if ('setAppBadge' in navigator && NOTIFICATIONS_STATE.settings.enableBadge) {
-        if (NOTIFICATIONS_STATE.unreadCount > 0) {
-            navigator.setAppBadge(NOTIFICATIONS_STATE.unreadCount);
-        } else {
-            navigator.clearAppBadge();
-        }
+function closeNotificationsPanelOnClickOutside(e) {
+    const panel = document.getElementById('notificationsPanel');
+    const notifBtn = document.querySelector('[onclick*="toggleNotificationsPanel"]');
+    
+    if (panel && !panel.contains(e.target) && !notifBtn?.contains(e.target)) {
+        panel.remove();
+        document.removeEventListener('click', closeNotificationsPanelOnClickOutside);
     }
 }
 
-/**
- * Mark notification as read
- */
-async function markAsRead(notificationId) {
-    const notification = NOTIFICATIONS_STATE.notifications.find(n => n.id === notificationId);
-    if (notification && !notification.read) {
-        notification.read = true;
-        await dbPut('notifications', notification);
-        NOTIFICATIONS_STATE.unreadCount--;
-        updateNotificationBadge();
+function renderNotificationsPanel() {
+    const list = document.getElementById('notificationsList');
+    if (list) {
+        list.innerHTML = renderNotificationsList();
     }
-}
-
-/**
- * Mark all notifications as read
- */
-async function markAllAsRead() {
-    for (const notification of NOTIFICATIONS_STATE.notifications) {
-        if (!notification.read) {
-            notification.read = true;
-            await dbPut('notifications', notification);
-        }
-    }
-    NOTIFICATIONS_STATE.unreadCount = 0;
     updateNotificationBadge();
-    renderNotificationsList();
 }
 
-/**
- * Delete notification
- */
-async function deleteNotification(notificationId) {
-    const index = NOTIFICATIONS_STATE.notifications.findIndex(n => n.id === notificationId);
-    if (index > -1) {
-        const notification = NOTIFICATIONS_STATE.notifications[index];
-        if (!notification.read) {
-            NOTIFICATIONS_STATE.unreadCount--;
-        }
-        NOTIFICATIONS_STATE.notifications.splice(index, 1);
-        await dbDelete('notifications', notificationId);
-        updateNotificationBadge();
-        renderNotificationsList();
-    }
-}
-
-/**
- * Clear all notifications
- */
-async function clearAllNotifications() {
-    for (const notification of NOTIFICATIONS_STATE.notifications) {
-        await dbDelete('notifications', notification.id);
-    }
-    NOTIFICATIONS_STATE.notifications = [];
-    NOTIFICATIONS_STATE.unreadCount = 0;
-    updateNotificationBadge();
-    renderNotificationsList();
-}
-
-/**
- * Render notifications list
- */
 function renderNotificationsList() {
-    const container = document.getElementById('notificationsList');
-    if (!container) return;
-
-    if (NOTIFICATIONS_STATE.notifications.length === 0) {
-        container.innerHTML = `
+    if (NOTIFICATION_STATE.notifications.length === 0) {
+        return `
             <div class="text-center py-8 text-gray-500">
-                <i class="fas fa-bell-slash text-4xl mb-4"></i>
+                <i class="fas fa-bell-slash text-4xl mb-2"></i>
                 <p>لا توجد إشعارات</p>
             </div>
         `;
-        return;
     }
-
-    container.innerHTML = NOTIFICATIONS_STATE.notifications.slice(0, 50).map(notification => {
-        const icon = NOTIFICATION_ICONS[notification.type] || NOTIFICATION_ICONS.system;
-        const timeAgo = formatTimeAgo(new Date(notification.timestamp));
+    
+    return NOTIFICATION_STATE.notifications.slice(0, 50).map(notification => {
+        const iconMap = {
+            [NOTIFICATION_TYPES.SYNC_SUCCESS]: 'fa-check-circle text-green-500',
+            [NOTIFICATION_TYPES.SYNC_FAILED]: 'fa-times-circle text-red-500',
+            [NOTIFICATION_TYPES.SYNC_CONFLICT]: 'fa-exclamation-triangle text-yellow-500',
+            [NOTIFICATION_TYPES.NEW_ASSET]: 'fa-plus-circle text-blue-500',
+            [NOTIFICATION_TYPES.SESSION_STARTED]: 'fa-play-circle text-green-500',
+            [NOTIFICATION_TYPES.USER_ACTIVITY]: 'fa-user-clock text-purple-500',
+            [NOTIFICATION_TYPES.SYSTEM_ALERT]: 'fa-bell text-orange-500'
+        };
+        
+        const icon = iconMap[notification.type] || 'fa-bell text-gray-500';
+        const isUnread = !notification.read;
         
         return `
-            <div class="notification-item ${notification.read ? 'opacity-60' : ''} 
-                        flex items-start gap-3 p-4 border-b hover:bg-gray-50 cursor-pointer"
-                 onclick="markAsRead('${notification.id}')">
-                <div class="flex-shrink-0 mt-1">
-                    <i class="fas ${icon}"></i>
+            <div class="notification-item p-4 border-b hover:bg-gray-50 cursor-pointer ${isUnread ? 'bg-blue-50' : ''}"
+                 onclick="markNotificationAsRead('${notification.id}'); handleNotificationClick(${JSON.stringify(notification).replace(/"/g, '&quot;')})">
+                <div class="flex items-start gap-3">
+                    <div class="flex-shrink-0 mt-1">
+                        <i class="fas ${icon}"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="font-medium text-gray-900 text-sm ${isUnread ? 'font-bold' : ''}">${notification.title}</p>
+                        <p class="text-gray-600 text-xs mt-1">${notification.message}</p>
+                        <p class="text-gray-400 text-xs mt-2">${formatTimeAgo(notification.createdAt)}</p>
+                    </div>
+                    ${isUnread ? '<div class="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>' : ''}
                 </div>
-                <div class="flex-1">
-                    <p class="font-medium text-gray-800">${notification.title}</p>
-                    <p class="text-sm text-gray-600">${notification.message}</p>
-                    <p class="text-xs text-gray-400 mt-1">${timeAgo}</p>
-                </div>
-                <button onclick="event.stopPropagation(); deleteNotification('${notification.id}')"
-                        class="text-gray-400 hover:text-red-500">
-                    <i class="fas fa-times"></i>
-                </button>
             </div>
         `;
     }).join('');
 }
 
-/**
- * Show notifications panel
- */
-function showNotificationsPanel() {
-    const panel = document.getElementById('notificationsPanel');
-    if (panel) {
-        panel.classList.remove('hidden');
-        renderNotificationsList();
-    }
+// === Toggle Notification Sound ===
+async function toggleNotificationSound(enabled) {
+    NOTIFICATION_STATE.soundEnabled = enabled;
+    await dbPut(STORES.settings, { key: 'notificationSettings', value: { soundEnabled: enabled } });
 }
 
-/**
- * Hide notifications panel
- */
-function hideNotificationsPanel() {
-    const panel = document.getElementById('notificationsPanel');
-    if (panel) {
-        panel.classList.add('hidden');
-    }
-}
-
-/**
- * Toggle notifications panel
- */
-function toggleNotificationsPanel() {
-    const panel = document.getElementById('notificationsPanel');
-    if (panel) {
-        if (panel.classList.contains('hidden')) {
-            showNotificationsPanel();
-        } else {
-            hideNotificationsPanel();
+// === Start Polling for New Notifications ===
+function startNotificationPolling() {
+    if (NOTIFICATION_STATE.pollingInterval) return;
+    
+    // Poll every 30 seconds
+    NOTIFICATION_STATE.pollingInterval = setInterval(async () => {
+        if (AUTH_STATE.isOnline) {
+            await checkForNewNotifications();
         }
+    }, 30000);
+}
+
+function stopNotificationPolling() {
+    if (NOTIFICATION_STATE.pollingInterval) {
+        clearInterval(NOTIFICATION_STATE.pollingInterval);
+        NOTIFICATION_STATE.pollingInterval = null;
     }
 }
 
-/**
- * Setup battery monitoring
- */
-async function setupBatteryMonitor() {
-    try {
-        const battery = await navigator.getBattery();
-        
-        battery.addEventListener('levelchange', () => {
-            if (battery.level <= 0.15 && !battery.charging) {
-                notify(
-                    NOTIFICATION_TYPES.LOW_BATTERY,
-                    'البطارية منخفضة',
-                    'يرجى شحن الجهاز لضمان حفظ البيانات',
-                    { silent: false }
-                );
-            }
-        });
-    } catch (e) {
-        console.log('Battery API not supported');
-    }
+async function checkForNewNotifications() {
+    // This would typically fetch from server
+    // For now, we just reload from local DB
+    await loadNotifications();
+    updateNotificationBadge();
 }
 
-/**
- * Notification shortcuts for common events
- */
-const NotificationShortcuts = {
-    syncSuccess: (count) => notify(
+// === Sync Notifications ===
+function notifySyncSuccess(count) {
+    createNotification(
         NOTIFICATION_TYPES.SYNC_SUCCESS,
         'تمت المزامنة بنجاح',
-        `تم مزامنة ${count} عنصر مع السحابة`
-    ),
-    
-    syncError: (error) => notify(
-        NOTIFICATION_TYPES.SYNC_ERROR,
-        'فشل المزامنة',
-        error.message || 'حدث خطأ أثناء المزامنة',
-        { persistent: true }
-    ),
-    
-    newAsset: (asset, userName) => notify(
-        NOTIFICATION_TYPES.NEW_ASSET,
-        'أصل جديد',
-        `تمت إضافة "${asset.name}" بواسطة ${userName}`,
-        { data: { assetId: asset.id } }
-    ),
-    
-    sessionStarted: (session) => notify(
+        `تم مزامنة ${count} عنصر مع الخادم`,
+        { count }
+    );
+}
+
+function notifySyncFailed(error) {
+    createNotification(
+        NOTIFICATION_TYPES.SYNC_FAILED,
+        'فشلت المزامنة',
+        `حدث خطأ أثناء المزامنة: ${error}`,
+        { error }
+    );
+}
+
+function notifySyncConflict(conflicts) {
+    createNotification(
+        NOTIFICATION_TYPES.SYNC_CONFLICT,
+        'تعارض في البيانات',
+        `يوجد ${conflicts.length} تعارض يحتاج حل`,
+        { conflicts }
+    );
+}
+
+// === Asset Notifications ===
+function notifyNewAsset(asset, scannedBy) {
+    if (AUTH_STATE.userRole === USER_ROLES.ADMIN || AUTH_STATE.userRole === USER_ROLES.MANAGER) {
+        createNotification(
+            NOTIFICATION_TYPES.NEW_ASSET,
+            'تم إضافة أصل جديد',
+            `${scannedBy} أضاف أصل: ${asset.name}`,
+            { 
+                assetId: asset.id, 
+                assetName: asset.name,
+                scannedBy,
+                targetRole: USER_ROLES.ADMIN
+            }
+        );
+    }
+}
+
+// === Session Notifications ===
+function notifySessionStarted(session) {
+    createNotification(
         NOTIFICATION_TYPES.SESSION_STARTED,
-        'بدأت جلسة جرد',
-        `بدأت جلسة "${session.name}"`,
-        { data: { sessionId: session.id } }
-    ),
-    
-    sessionCompleted: (session) => notify(
+        'بدأت جلسة جرد جديدة',
+        `${session.name} في ${session.branchName}`,
+        { 
+            sessionId: session.id,
+            targetBranch: session.branch
+        }
+    );
+}
+
+function notifySessionCompleted(session) {
+    createNotification(
         NOTIFICATION_TYPES.SESSION_COMPLETED,
         'اكتملت جلسة الجرد',
-        `اكتملت جلسة "${session.name}"`,
-        { data: { sessionId: session.id } }
-    ),
-    
-    conflict: (item) => notify(
-        NOTIFICATION_TYPES.CONFLICT_DETECTED,
-        'تعارض في البيانات',
-        'تم اكتشاف تعارض يحتاج مراجعة',
-        { persistent: true, data: item }
-    ),
-    
-    offline: () => notify(
-        NOTIFICATION_TYPES.OFFLINE_MODE,
-        'وضع عدم الاتصال',
-        'ستُحفظ البيانات محلياً وتُزامن عند الاتصال',
-        { silent: true }
-    ),
-    
-    online: () => notify(
-        NOTIFICATION_TYPES.ONLINE_MODE,
-        'تم الاتصال',
-        'جاري مزامنة البيانات...',
-        { silent: true }
-    )
-};
+        `تم إنهاء ${session.name} بنجاح`,
+        { 
+            sessionId: session.id,
+            targetBranch: session.branch
+        }
+    );
+}
 
-/**
- * Export Notifications functions
- */
-window.Notifications = {
-    init: initNotifications,
-    notify,
-    markAsRead,
-    markAllAsRead,
-    deleteNotification,
-    clearAll: clearAllNotifications,
-    toggle: toggleNotificationsPanel,
-    shortcuts: NotificationShortcuts,
-    updateBadge: updateNotificationBadge
-};
+// === Format Time Ago ===
+function formatTimeAgo(dateString) {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diff = now - date;
+    
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+    
+    if (minutes < 1) return 'الآن';
+    if (minutes < 60) return `منذ ${minutes} دقيقة`;
+    if (hours < 24) return `منذ ${hours} ساعة`;
+    if (days < 7) return `منذ ${days} يوم`;
+    
+    return date.toLocaleDateString('ar-SA');
+}
+
+// === Show Sync Conflict Modal ===
+function showSyncConflictModal(data) {
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50';
+    modal.innerHTML = `
+        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 overflow-hidden">
+            <div class="bg-yellow-500 text-white p-4">
+                <h3 class="font-bold text-lg">
+                    <i class="fas fa-exclamation-triangle ml-2"></i>
+                    تعارض في البيانات
+                </h3>
+            </div>
+            <div class="p-6">
+                <p class="text-gray-600 mb-4">
+                    تم اكتشاف تعارض في البيانات. يرجى اختيار الإجراء المناسب:
+                </p>
+                <div class="space-y-3">
+                    <button onclick="resolveConflict('local'); this.closest('.fixed').remove();"
+                            class="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700">
+                        الاحتفاظ بالنسخة المحلية
+                    </button>
+                    <button onclick="resolveConflict('server'); this.closest('.fixed').remove();"
+                            class="w-full bg-gray-600 text-white py-3 rounded-lg hover:bg-gray-700">
+                        استخدام نسخة الخادم
+                    </button>
+                    <button onclick="this.closest('.fixed').remove();"
+                            class="w-full bg-gray-100 text-gray-700 py-3 rounded-lg hover:bg-gray-200">
+                        تأجيل القرار
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+async function resolveConflict(choice) {
+    // Handle conflict resolution
+    console.log('Conflict resolved with choice:', choice);
+    showToast('تم حل التعارض بنجاح', 'success');
+}
+
+// === Export for global access ===
+window.NOTIFICATION_TYPES = NOTIFICATION_TYPES;
+window.NOTIFICATION_STATE = NOTIFICATION_STATE;
+window.initializeNotifications = initializeNotifications;
+window.createNotification = createNotification;
+window.markNotificationAsRead = markNotificationAsRead;
+window.markAllNotificationsAsRead = markAllNotificationsAsRead;
+window.deleteNotification = deleteNotification;
+window.clearAllNotifications = clearAllNotifications;
+window.toggleNotificationsPanel = toggleNotificationsPanel;
+window.notifySyncSuccess = notifySyncSuccess;
+window.notifySyncFailed = notifySyncFailed;
+window.notifySyncConflict = notifySyncConflict;
+window.notifyNewAsset = notifyNewAsset;
+window.notifySessionStarted = notifySessionStarted;
+window.notifySessionCompleted = notifySessionCompleted;

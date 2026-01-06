@@ -1,18 +1,10 @@
 /**
- * Audit Sessions Management
+ * Audit Sessions Management Module
  * نظام إدارة جلسات الجرد
+ * Version 6.0
  */
 
-// Audit Sessions State
-const SESSIONS_STATE = {
-    sessions: [],
-    currentSession: null,
-    activeSessionId: null
-};
-
-/**
- * Audit Session Status
- */
+// === Session States ===
 const SESSION_STATUS = {
     DRAFT: 'draft',           // مسودة
     ACTIVE: 'active',         // نشطة
@@ -21,634 +13,459 @@ const SESSION_STATUS = {
     CANCELLED: 'cancelled'    // ملغاة
 };
 
-const SESSION_STATUS_LABELS = {
-    draft: 'مسودة',
-    active: 'نشطة',
-    paused: 'متوقفة',
-    completed: 'مكتملة',
-    cancelled: 'ملغاة'
-};
+// === Sessions Store Name ===
+const SESSIONS_STORE = 'audit_sessions';
 
-const SESSION_STATUS_COLORS = {
-    draft: 'bg-gray-100 text-gray-800',
-    active: 'bg-green-100 text-green-800',
-    paused: 'bg-yellow-100 text-yellow-800',
-    completed: 'bg-blue-100 text-blue-800',
-    cancelled: 'bg-red-100 text-red-800'
-};
-
-/**
- * Initialize Audit Sessions
- */
-async function initAuditSessions() {
-    await loadSessions();
-    renderSessionsList();
-    updateSessionStats();
-}
-
-/**
- * Load sessions from storage
- */
-async function loadSessions() {
+// === Initialize Sessions Store ===
+async function initializeSessionsStore() {
+    // Sessions store will be created in the main DB initialization
+    // This function ensures demo sessions exist
     try {
-        // Load from IndexedDB first
-        SESSIONS_STATE.sessions = await dbGetAll('auditSessions') || [];
-
-        // If Firebase is available and online, sync
-        if (isFirebaseReady() && APP_STATE.isOnline) {
-            await syncSessions();
+        const sessions = await dbGetAll(SESSIONS_STORE);
+        if (!sessions || sessions.length === 0) {
+            await createDemoSessions();
         }
-
-        // Load active session
-        const activeSessionId = localStorage.getItem('activeSessionId');
-        if (activeSessionId) {
-            SESSIONS_STATE.activeSessionId = activeSessionId;
-            SESSIONS_STATE.currentSession = SESSIONS_STATE.sessions.find(s => s.id === activeSessionId);
-        }
-
     } catch (error) {
-        console.error('Error loading sessions:', error);
+        console.log('Sessions store initialization:', error);
     }
 }
 
-/**
- * Sync sessions with Firebase
- */
-async function syncSessions() {
-    if (!isFirebaseReady()) return;
-
-    try {
-        const { collection, getDocs, query, where } = window.FirebaseModules.firestore;
-        
-        // Build query based on user role
-        let sessionsQuery;
-        if (AUTH_STATE.role === USER_ROLES.ADMIN) {
-            sessionsQuery = collection(getFirebaseDB(), 'auditSessions');
-        } else {
-            sessionsQuery = query(
-                collection(getFirebaseDB(), 'auditSessions'),
-                where('branch', '==', AUTH_STATE.branch)
-            );
+// === Create Demo Sessions ===
+async function createDemoSessions() {
+    const demoSessions = [
+        {
+            id: 'session-001',
+            name: 'جرد فرع الرياض - يناير 2026',
+            branch: 'branch-riyadh',
+            branchName: 'فرع الرياض',
+            startDate: '2026-01-01',
+            endDate: '2026-01-31',
+            status: SESSION_STATUS.ACTIVE,
+            participants: ['field-001', 'field-002'],
+            targetAssets: 500,
+            scannedAssets: 127,
+            progress: 25.4,
+            notes: 'جرد شامل لجميع أصول الفرع',
+            createdBy: 'admin-001',
+            createdAt: '2025-12-28T00:00:00Z',
+            updatedAt: '2026-01-06T10:30:00Z'
+        },
+        {
+            id: 'session-002',
+            name: 'جرد فرع جدة - يناير 2026',
+            branch: 'branch-jeddah',
+            branchName: 'فرع جدة',
+            startDate: '2026-01-05',
+            endDate: '2026-01-25',
+            status: SESSION_STATUS.ACTIVE,
+            participants: ['field-003'],
+            targetAssets: 300,
+            scannedAssets: 45,
+            progress: 15,
+            notes: 'جرد ربع سنوي',
+            createdBy: 'manager-002',
+            createdAt: '2026-01-04T00:00:00Z',
+            updatedAt: '2026-01-06T09:00:00Z'
+        },
+        {
+            id: 'session-003',
+            name: 'جرد فرع الرياض - ديسمبر 2025',
+            branch: 'branch-riyadh',
+            branchName: 'فرع الرياض',
+            startDate: '2025-12-01',
+            endDate: '2025-12-31',
+            status: SESSION_STATUS.COMPLETED,
+            participants: ['field-001', 'field-002'],
+            targetAssets: 480,
+            scannedAssets: 480,
+            progress: 100,
+            notes: 'تم الانتهاء بنجاح',
+            createdBy: 'admin-001',
+            createdAt: '2025-11-28T00:00:00Z',
+            completedAt: '2025-12-30T16:45:00Z'
         }
-
-        const snapshot = await getDocs(sessionsQuery);
-        const firebaseSessions = [];
-        
-        snapshot.forEach(doc => {
-            firebaseSessions.push({ id: doc.id, ...doc.data() });
-        });
-
-        // Merge with local sessions
-        for (const session of firebaseSessions) {
-            const localIndex = SESSIONS_STATE.sessions.findIndex(s => s.id === session.id);
-            if (localIndex >= 0) {
-                // Update if Firebase version is newer
-                if (new Date(session.updatedAt) > new Date(SESSIONS_STATE.sessions[localIndex].updatedAt)) {
-                    SESSIONS_STATE.sessions[localIndex] = session;
-                    await dbPut('auditSessions', session);
-                }
-            } else {
-                SESSIONS_STATE.sessions.push(session);
-                await dbPut('auditSessions', session);
-            }
-        }
-
-    } catch (error) {
-        console.error('Error syncing sessions:', error);
+    ];
+    
+    for (const session of demoSessions) {
+        await dbPut(SESSIONS_STORE, session);
     }
+    
+    console.log('Demo sessions created');
 }
 
-/**
- * Create new audit session
- */
+// === Get Sessions ===
+async function getSessions(filters = {}) {
+    let sessions = await dbGetAll(SESSIONS_STORE);
+    
+    // Filter by role permissions
+    if (AUTH_STATE.userRole === USER_ROLES.MANAGER) {
+        sessions = sessions.filter(s => s.branch === AUTH_STATE.userBranch);
+    } else if (AUTH_STATE.userRole === USER_ROLES.FIELD_USER) {
+        sessions = sessions.filter(s => 
+            s.participants && s.participants.includes(AUTH_STATE.currentUser?.id) &&
+            s.status === SESSION_STATUS.ACTIVE
+        );
+    }
+    
+    // Apply additional filters
+    if (filters.status) {
+        sessions = sessions.filter(s => s.status === filters.status);
+    }
+    
+    if (filters.branch) {
+        sessions = sessions.filter(s => s.branch === filters.branch);
+    }
+    
+    if (filters.dateFrom) {
+        sessions = sessions.filter(s => s.startDate >= filters.dateFrom);
+    }
+    
+    if (filters.dateTo) {
+        sessions = sessions.filter(s => s.endDate <= filters.dateTo);
+    }
+    
+    // Sort by date descending
+    sessions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    
+    return sessions;
+}
+
+// === Get Active Session ===
+async function getActiveSession() {
+    const sessions = await getSessions({ status: SESSION_STATUS.ACTIVE });
+    
+    if (AUTH_STATE.userRole === USER_ROLES.FIELD_USER) {
+        // Return the session the field user is participating in
+        return sessions.find(s => 
+            s.participants && s.participants.includes(AUTH_STATE.currentUser?.id)
+        );
+    }
+    
+    // Return first active session for the branch
+    if (AUTH_STATE.userRole === USER_ROLES.MANAGER) {
+        return sessions.find(s => s.branch === AUTH_STATE.userBranch);
+    }
+    
+    return sessions[0];
+}
+
+// === Create Session ===
 async function createSession(sessionData) {
-    if (!hasPermission('canCreateSessions')) {
-        showToast('ليس لديك صلاحية لإنشاء جلسات جرد', 'error');
-        return null;
+    if (!hasPermission('canManageSessions')) {
+        throw new Error('ليس لديك صلاحية لإنشاء جلسات الجرد');
     }
-
-    try {
-        showLoading();
-
-        const session = {
-            id: generateId(),
-            name: sessionData.name,
-            description: sessionData.description || '',
-            branch: AUTH_STATE.role === USER_ROLES.ADMIN ? sessionData.branch : AUTH_STATE.branch,
-            branchName: sessionData.branchName || '',
-            status: SESSION_STATUS.DRAFT,
-            startDate: sessionData.startDate || new Date().toISOString(),
-            endDate: sessionData.endDate || null,
-            targetAssetCount: sessionData.targetAssetCount || 0,
-            scannedAssetCount: 0,
-            participants: sessionData.participants || [],
-            participantNames: sessionData.participantNames || [],
-            notes: sessionData.notes || '',
-            createdBy: currentUserData?.id,
-            createdByName: currentUserData?.displayName || currentUserData?.username,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-        };
-
-        // Save to IndexedDB
-        await dbPut('auditSessions', session);
-        SESSIONS_STATE.sessions.push(session);
-
-        // Save to Firebase if available
-        if (isFirebaseReady() && APP_STATE.isOnline) {
-            const { doc, setDoc } = window.FirebaseModules.firestore;
-            await setDoc(doc(getFirebaseDB(), 'auditSessions', session.id), session);
-        }
-
-        // Log activity
-        await logActivity('session_created', 'إنشاء جلسة جرد جديدة', {
-            sessionId: session.id,
-            sessionName: session.name,
-            branch: session.branch
-        });
-
-        showToast('تم إنشاء جلسة الجرد بنجاح', 'success');
-        renderSessionsList();
-        updateSessionStats();
-        
-        return session;
-
-    } catch (error) {
-        console.error('Error creating session:', error);
-        showToast('فشل إنشاء جلسة الجرد', 'error');
-        return null;
-    } finally {
-        hideLoading();
+    
+    // Validate branch for manager
+    if (AUTH_STATE.userRole === USER_ROLES.MANAGER && sessionData.branch !== AUTH_STATE.userBranch) {
+        throw new Error('لا يمكنك إنشاء جلسة لفرع آخر');
     }
+    
+    const branches = await getBranches();
+    const branch = branches.find(b => b.id === sessionData.branch);
+    
+    const newSession = {
+        id: generateId('session'),
+        name: sessionData.name,
+        branch: sessionData.branch,
+        branchName: branch?.name || '',
+        startDate: sessionData.startDate,
+        endDate: sessionData.endDate,
+        status: SESSION_STATUS.DRAFT,
+        participants: sessionData.participants || [],
+        targetAssets: sessionData.targetAssets || 0,
+        scannedAssets: 0,
+        progress: 0,
+        notes: sessionData.notes || '',
+        createdBy: AUTH_STATE.currentUser?.id,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+    };
+    
+    await dbPut(SESSIONS_STORE, newSession);
+    await logActivity('create_session', 'إنشاء جلسة جرد جديدة', { 
+        sessionId: newSession.id, 
+        name: newSession.name 
+    });
+    
+    return newSession;
 }
 
-/**
- * Update session
- */
+// === Update Session ===
 async function updateSession(sessionId, updates) {
-    try {
-        const sessionIndex = SESSIONS_STATE.sessions.findIndex(s => s.id === sessionId);
-        if (sessionIndex < 0) {
-            showToast('جلسة الجرد غير موجودة', 'error');
-            return false;
-        }
-
-        const session = SESSIONS_STATE.sessions[sessionIndex];
-        
-        // Check permission
-        if (!canAccessBranch(session.branch)) {
-            showToast('ليس لديك صلاحية لتعديل هذه الجلسة', 'error');
-            return false;
-        }
-
-        // Update session
-        const updatedSession = {
-            ...session,
-            ...updates,
-            updatedAt: new Date().toISOString()
-        };
-
-        // Save to IndexedDB
-        await dbPut('auditSessions', updatedSession);
-        SESSIONS_STATE.sessions[sessionIndex] = updatedSession;
-
-        // Save to Firebase if available
-        if (isFirebaseReady() && APP_STATE.isOnline) {
-            const { doc, updateDoc } = window.FirebaseModules.firestore;
-            await updateDoc(doc(getFirebaseDB(), 'auditSessions', sessionId), updates);
-        }
-
-        // Log activity
-        await logActivity('session_updated', 'تحديث جلسة جرد', {
-            sessionId,
-            updates: Object.keys(updates)
-        });
-
-        renderSessionsList();
-        updateSessionStats();
-        
-        return true;
-
-    } catch (error) {
-        console.error('Error updating session:', error);
-        showToast('فشل تحديث جلسة الجرد', 'error');
-        return false;
+    if (!hasPermission('canManageSessions')) {
+        throw new Error('ليس لديك صلاحية لتعديل جلسات الجرد');
     }
+    
+    const session = await dbGet(SESSIONS_STORE, sessionId);
+    if (!session) {
+        throw new Error('جلسة الجرد غير موجودة');
+    }
+    
+    // Validate branch for manager
+    if (AUTH_STATE.userRole === USER_ROLES.MANAGER && session.branch !== AUTH_STATE.userBranch) {
+        throw new Error('لا يمكنك تعديل جلسة فرع آخر');
+    }
+    
+    const updatedSession = {
+        ...session,
+        ...updates,
+        updatedAt: new Date().toISOString(),
+        updatedBy: AUTH_STATE.currentUser?.id
+    };
+    
+    await dbPut(SESSIONS_STORE, updatedSession);
+    await logActivity('update_session', 'تعديل جلسة جرد', { sessionId, updates });
+    
+    return updatedSession;
 }
 
-/**
- * Start session
- */
+// === Start Session ===
 async function startSession(sessionId) {
+    const session = await dbGet(SESSIONS_STORE, sessionId);
+    if (!session) throw new Error('جلسة الجرد غير موجودة');
+    
+    if (session.status !== SESSION_STATUS.DRAFT && session.status !== SESSION_STATUS.PAUSED) {
+        throw new Error('لا يمكن بدء هذه الجلسة');
+    }
+    
     return await updateSession(sessionId, {
         status: SESSION_STATUS.ACTIVE,
-        actualStartDate: new Date().toISOString()
+        startedAt: session.startedAt || new Date().toISOString()
     });
 }
 
-/**
- * Pause session
- */
+// === Pause Session ===
 async function pauseSession(sessionId) {
+    const session = await dbGet(SESSIONS_STORE, sessionId);
+    if (!session) throw new Error('جلسة الجرد غير موجودة');
+    
+    if (session.status !== SESSION_STATUS.ACTIVE) {
+        throw new Error('الجلسة غير نشطة');
+    }
+    
     return await updateSession(sessionId, {
-        status: SESSION_STATUS.PAUSED
+        status: SESSION_STATUS.PAUSED,
+        pausedAt: new Date().toISOString()
     });
 }
 
-/**
- * Resume session
- */
-async function resumeSession(sessionId) {
-    return await updateSession(sessionId, {
-        status: SESSION_STATUS.ACTIVE
-    });
-}
-
-/**
- * Complete session
- */
+// === Complete Session ===
 async function completeSession(sessionId) {
-    const session = SESSIONS_STATE.sessions.find(s => s.id === sessionId);
-    if (!session) return false;
-
-    // Calculate final stats
-    const sessionAssets = APP_STATE.assets.filter(a => a.sessionId === sessionId);
+    const session = await dbGet(SESSIONS_STORE, sessionId);
+    if (!session) throw new Error('جلسة الجرد غير موجودة');
     
     return await updateSession(sessionId, {
         status: SESSION_STATUS.COMPLETED,
-        actualEndDate: new Date().toISOString(),
-        scannedAssetCount: sessionAssets.length,
-        completionRate: session.targetAssetCount > 0 
-            ? Math.round((sessionAssets.length / session.targetAssetCount) * 100) 
-            : 100
+        completedAt: new Date().toISOString(),
+        progress: 100
     });
 }
 
-/**
- * Cancel session
- */
+// === Cancel Session ===
 async function cancelSession(sessionId) {
+    const session = await dbGet(SESSIONS_STORE, sessionId);
+    if (!session) throw new Error('جلسة الجرد غير موجودة');
+    
     return await updateSession(sessionId, {
         status: SESSION_STATUS.CANCELLED,
-        cancelledAt: new Date().toISOString(),
-        cancelledBy: currentUserData?.id
+        cancelledAt: new Date().toISOString()
     });
 }
 
-/**
- * Set active session for current user
- */
-function setActiveSession(sessionId) {
-    SESSIONS_STATE.activeSessionId = sessionId;
-    SESSIONS_STATE.currentSession = SESSIONS_STATE.sessions.find(s => s.id === sessionId);
-    localStorage.setItem('activeSessionId', sessionId);
+// === Delete Session ===
+async function deleteSession(sessionId) {
+    if (AUTH_STATE.userRole !== USER_ROLES.ADMIN) {
+        throw new Error('فقط المشرف العام يمكنه حذف الجلسات');
+    }
     
-    updateActiveSessionDisplay();
-    showToast('تم تحديد جلسة الجرد النشطة', 'success');
+    await dbDelete(SESSIONS_STORE, sessionId);
+    await logActivity('delete_session', 'حذف جلسة جرد', { sessionId });
 }
 
-/**
- * Get current active session
- */
-function getActiveSession() {
-    return SESSIONS_STATE.currentSession;
-}
-
-/**
- * Update active session display in UI
- */
-function updateActiveSessionDisplay() {
-    const displayEl = document.getElementById('activeSessionDisplay');
-    if (displayEl) {
-        if (SESSIONS_STATE.currentSession) {
-            displayEl.innerHTML = `
-                <div class="flex items-center gap-2 bg-green-100 px-3 py-2 rounded-lg">
-                    <i class="fas fa-clipboard-check text-green-600"></i>
-                    <span class="text-sm font-medium text-green-800">${SESSIONS_STATE.currentSession.name}</span>
-                </div>
-            `;
-            displayEl.classList.remove('hidden');
-        } else {
-            displayEl.classList.add('hidden');
-        }
+// === Add Asset to Session ===
+async function addAssetToSession(sessionId, assetId) {
+    const session = await dbGet(SESSIONS_STORE, sessionId);
+    if (!session) throw new Error('جلسة الجرد غير موجودة');
+    
+    if (session.status !== SESSION_STATUS.ACTIVE) {
+        throw new Error('الجلسة غير نشطة');
     }
+    
+    // Update session progress
+    session.scannedAssets = (session.scannedAssets || 0) + 1;
+    session.progress = session.targetAssets > 0 
+        ? Math.min(100, (session.scannedAssets / session.targetAssets) * 100)
+        : 0;
+    session.updatedAt = new Date().toISOString();
+    
+    await dbPut(SESSIONS_STORE, session);
+    
+    // Create session scan record
+    const scanRecord = {
+        id: generateId('scan'),
+        sessionId,
+        assetId,
+        scannedBy: AUTH_STATE.currentUser?.id,
+        scannedByName: AUTH_STATE.currentUser?.name,
+        scannedAt: new Date().toISOString(),
+        location: await getCurrentLocation()
+    };
+    
+    await dbPut('session_scans', scanRecord);
+    
+    return session;
 }
 
-/**
- * Get session by ID
- */
-function getSessionById(sessionId) {
-    return SESSIONS_STATE.sessions.find(s => s.id === sessionId);
-}
-
-/**
- * Get sessions for current user (filtered by role)
- */
-function getFilteredSessions() {
-    if (AUTH_STATE.role === USER_ROLES.ADMIN) {
-        return SESSIONS_STATE.sessions;
-    }
-    return SESSIONS_STATE.sessions.filter(s => s.branch === AUTH_STATE.branch);
-}
-
-/**
- * Get active sessions
- */
-function getActiveSessions() {
-    return getFilteredSessions().filter(s => s.status === SESSION_STATUS.ACTIVE);
-}
-
-/**
- * Get session statistics
- */
-function getSessionStats(sessionId) {
-    const session = getSessionById(sessionId);
+// === Get Session Statistics ===
+async function getSessionStatistics(sessionId) {
+    const session = await dbGet(SESSIONS_STORE, sessionId);
     if (!session) return null;
-
-    const sessionAssets = APP_STATE.assets.filter(a => a.sessionId === sessionId);
+    
+    // Get all scans for this session
+    const allScans = await dbGetAll('session_scans');
+    const sessionScans = allScans.filter(s => s.sessionId === sessionId);
     
     // Group by user
     const userStats = {};
-    sessionAssets.forEach(asset => {
-        const userId = asset.createdBy || 'unknown';
+    for (const scan of sessionScans) {
+        const userId = scan.scannedBy;
         if (!userStats[userId]) {
             userStats[userId] = {
                 userId,
-                userName: asset.createdByName || 'غير معروف',
+                userName: scan.scannedByName,
                 count: 0,
-                lastActivity: null
+                lastScan: null
             };
         }
         userStats[userId].count++;
-        if (!userStats[userId].lastActivity || asset.createdAt > userStats[userId].lastActivity) {
-            userStats[userId].lastActivity = asset.createdAt;
+        if (!userStats[userId].lastScan || new Date(scan.scannedAt) > new Date(userStats[userId].lastScan)) {
+            userStats[userId].lastScan = scan.scannedAt;
         }
-    });
-
+    }
+    
+    // Group by date
+    const dailyStats = {};
+    for (const scan of sessionScans) {
+        const date = scan.scannedAt.split('T')[0];
+        dailyStats[date] = (dailyStats[date] || 0) + 1;
+    }
+    
     return {
-        totalScanned: sessionAssets.length,
-        targetCount: session.targetAssetCount,
-        completionRate: session.targetAssetCount > 0 
-            ? Math.round((sessionAssets.length / session.targetAssetCount) * 100) 
-            : 0,
+        session,
+        totalScans: sessionScans.length,
         userStats: Object.values(userStats),
-        todayCount: sessionAssets.filter(a => isToday(a.createdAt)).length
+        dailyStats,
+        participantsCount: session.participants?.length || 0,
+        daysRemaining: Math.max(0, Math.ceil((new Date(session.endDate) - new Date()) / (1000 * 60 * 60 * 24)))
     };
 }
 
-/**
- * Check if date is today
- */
-function isToday(dateString) {
-    const date = new Date(dateString);
-    const today = new Date();
-    return date.toDateString() === today.toDateString();
+// === Get User Daily Statistics ===
+async function getUserDailyStats(userId, sessionId) {
+    const allScans = await dbGetAll('session_scans');
+    const today = new Date().toISOString().split('T')[0];
+    
+    let scans = allScans.filter(s => s.scannedBy === userId);
+    
+    if (sessionId) {
+        scans = scans.filter(s => s.sessionId === sessionId);
+    }
+    
+    const todayScans = scans.filter(s => s.scannedAt.startsWith(today));
+    
+    return {
+        total: scans.length,
+        today: todayScans.length,
+        lastScan: scans.length > 0 ? scans[scans.length - 1].scannedAt : null
+    };
 }
 
-/**
- * Render sessions list
- */
-function renderSessionsList() {
-    const container = document.getElementById('sessionsList');
-    if (!container) return;
-
-    const sessions = getFilteredSessions();
+// === Get All Workers Statistics ===
+async function getAllWorkersStats(sessionId = null) {
+    const users = await getUsers();
+    const fieldUsers = users.filter(u => u.role === USER_ROLES.FIELD_USER);
     
-    if (sessions.length === 0) {
-        container.innerHTML = `
-            <div class="text-center py-12 text-gray-500">
-                <i class="fas fa-clipboard-list text-4xl mb-4"></i>
-                <p>لا توجد جلسات جرد</p>
-            </div>
-        `;
-        return;
+    const stats = [];
+    
+    for (const user of fieldUsers) {
+        const userStats = await getUserDailyStats(user.id, sessionId);
+        stats.push({
+            user,
+            ...userStats
+        });
     }
+    
+    // Sort by today's count descending
+    stats.sort((a, b) => b.today - a.today);
+    
+    return stats;
+}
 
-    container.innerHTML = sessions.map(session => {
-        const stats = getSessionStats(session.id);
-        const isActive = SESSIONS_STATE.activeSessionId === session.id;
+// === Helper: Get Current Location ===
+async function getCurrentLocation() {
+    return new Promise((resolve) => {
+        if (!navigator.geolocation) {
+            resolve(null);
+            return;
+        }
         
-        return `
-            <div class="bg-white rounded-xl shadow-sm border ${isActive ? 'border-green-500 ring-2 ring-green-200' : 'border-gray-200'} p-6 mb-4">
-                <div class="flex items-start justify-between mb-4">
-                    <div>
-                        <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2">
-                            ${session.name}
-                            ${isActive ? '<span class="text-xs bg-green-500 text-white px-2 py-1 rounded">نشطة</span>' : ''}
-                        </h3>
-                        <p class="text-sm text-gray-500">${session.branchName || session.branch || 'بدون فرع'}</p>
-                    </div>
-                    <span class="px-3 py-1 rounded-full text-sm ${SESSION_STATUS_COLORS[session.status]}">
-                        ${SESSION_STATUS_LABELS[session.status]}
-                    </span>
-                </div>
-                
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                    <div class="text-center">
-                        <p class="text-2xl font-bold text-gov-blue">${stats?.totalScanned || 0}</p>
-                        <p class="text-xs text-gray-500">أصول ممسوحة</p>
-                    </div>
-                    <div class="text-center">
-                        <p class="text-2xl font-bold text-gray-600">${session.targetAssetCount || '-'}</p>
-                        <p class="text-xs text-gray-500">الهدف</p>
-                    </div>
-                    <div class="text-center">
-                        <p class="text-2xl font-bold text-gov-green">${stats?.completionRate || 0}%</p>
-                        <p class="text-xs text-gray-500">نسبة الإنجاز</p>
-                    </div>
-                    <div class="text-center">
-                        <p class="text-2xl font-bold text-gov-gold">${stats?.todayCount || 0}</p>
-                        <p class="text-xs text-gray-500">اليوم</p>
-                    </div>
-                </div>
-                
-                <div class="flex items-center justify-between pt-4 border-t">
-                    <div class="text-sm text-gray-500">
-                        <i class="fas fa-users ml-1"></i>
-                        ${session.participants?.length || 0} مشارك
-                    </div>
-                    <div class="flex gap-2">
-                        ${session.status === SESSION_STATUS.DRAFT ? `
-                            <button onclick="startSession('${session.id}')" class="px-3 py-1 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600">
-                                <i class="fas fa-play ml-1"></i> بدء
-                            </button>
-                        ` : ''}
-                        ${session.status === SESSION_STATUS.ACTIVE ? `
-                            <button onclick="setActiveSession('${session.id}')" class="px-3 py-1 bg-gov-blue text-white rounded-lg text-sm hover:bg-gov-blue-light">
-                                <i class="fas fa-check ml-1"></i> تحديد
-                            </button>
-                            <button onclick="pauseSession('${session.id}')" class="px-3 py-1 bg-yellow-500 text-white rounded-lg text-sm hover:bg-yellow-600">
-                                <i class="fas fa-pause ml-1"></i> إيقاف
-                            </button>
-                        ` : ''}
-                        ${session.status === SESSION_STATUS.PAUSED ? `
-                            <button onclick="resumeSession('${session.id}')" class="px-3 py-1 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600">
-                                <i class="fas fa-play ml-1"></i> استئناف
-                            </button>
-                        ` : ''}
-                        <button onclick="viewSessionDetails('${session.id}')" class="px-3 py-1 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200">
-                            <i class="fas fa-eye ml-1"></i> تفاصيل
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `;
-    }).join('');
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                resolve({
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude,
+                    accuracy: position.coords.accuracy,
+                    timestamp: new Date().toISOString()
+                });
+            },
+            (error) => {
+                console.warn('Geolocation error:', error);
+                resolve(null);
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 60000
+            }
+        );
+    });
 }
 
-/**
- * Update session statistics in dashboard
- */
-function updateSessionStats() {
-    const activeCount = getActiveSessions().length;
-    const el = document.getElementById('activeSessionsCount');
-    if (el) {
-        el.textContent = activeCount;
-    }
+// === Generate Google Maps Link ===
+function generateMapsLink(latitude, longitude) {
+    if (!latitude || !longitude) return null;
+    return `https://www.google.com/maps?q=${latitude},${longitude}`;
 }
 
-/**
- * View session details
- */
-function viewSessionDetails(sessionId) {
-    const session = getSessionById(sessionId);
-    if (!session) return;
-
-    const stats = getSessionStats(sessionId);
-    
-    // Create modal content
-    const modalContent = `
-        <div class="p-6">
-            <h2 class="text-2xl font-bold text-gray-800 mb-6">${session.name}</h2>
-            
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <div class="bg-blue-50 rounded-xl p-4 text-center">
-                    <p class="text-3xl font-bold text-gov-blue">${stats?.totalScanned || 0}</p>
-                    <p class="text-sm text-gray-600">أصول ممسوحة</p>
-                </div>
-                <div class="bg-gray-50 rounded-xl p-4 text-center">
-                    <p class="text-3xl font-bold text-gray-600">${session.targetAssetCount || '-'}</p>
-                    <p class="text-sm text-gray-600">الهدف</p>
-                </div>
-                <div class="bg-green-50 rounded-xl p-4 text-center">
-                    <p class="text-3xl font-bold text-gov-green">${stats?.completionRate || 0}%</p>
-                    <p class="text-sm text-gray-600">نسبة الإنجاز</p>
-                </div>
-                <div class="bg-amber-50 rounded-xl p-4 text-center">
-                    <p class="text-3xl font-bold text-gov-gold">${stats?.todayCount || 0}</p>
-                    <p class="text-sm text-gray-600">اليوم</p>
-                </div>
-            </div>
-
-            <div class="mb-6">
-                <h3 class="font-bold text-gray-800 mb-3">إحصائيات المشاركين</h3>
-                <div class="bg-gray-50 rounded-xl p-4">
-                    ${stats?.userStats?.length > 0 ? `
-                        <table class="w-full">
-                            <thead>
-                                <tr class="text-right text-gray-600 text-sm">
-                                    <th class="pb-2">المستخدم</th>
-                                    <th class="pb-2">عدد الأصول</th>
-                                    <th class="pb-2">آخر نشاط</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${stats.userStats.map(u => `
-                                    <tr class="border-t">
-                                        <td class="py-2">${u.userName}</td>
-                                        <td class="py-2">${u.count}</td>
-                                        <td class="py-2 text-sm text-gray-500">
-                                            ${u.lastActivity ? new Date(u.lastActivity).toLocaleString('ar-SA') : '-'}
-                                        </td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    ` : '<p class="text-gray-500 text-center">لا توجد بيانات</p>'}
-                </div>
-            </div>
-
-            <div class="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                    <p class="text-gray-500">تاريخ البدء</p>
-                    <p class="font-medium">${session.startDate ? new Date(session.startDate).toLocaleDateString('ar-SA') : '-'}</p>
-                </div>
-                <div>
-                    <p class="text-gray-500">تاريخ الانتهاء</p>
-                    <p class="font-medium">${session.endDate ? new Date(session.endDate).toLocaleDateString('ar-SA') : '-'}</p>
-                </div>
-                <div>
-                    <p class="text-gray-500">أنشئت بواسطة</p>
-                    <p class="font-medium">${session.createdByName || '-'}</p>
-                </div>
-                <div>
-                    <p class="text-gray-500">الحالة</p>
-                    <span class="px-2 py-1 rounded ${SESSION_STATUS_COLORS[session.status]}">${SESSION_STATUS_LABELS[session.status]}</span>
-                </div>
-            </div>
-        </div>
-    `;
-
-    // Show in modal
-    showCustomModal('تفاصيل جلسة الجرد', modalContent);
-}
-
-/**
- * Open create session modal
- */
-function openCreateSessionModal() {
-    document.getElementById('sessionModal')?.classList.remove('hidden');
-    document.getElementById('sessionForm')?.reset();
-}
-
-/**
- * Close session modal
- */
-function closeSessionModal() {
-    document.getElementById('sessionModal')?.classList.add('hidden');
-}
-
-/**
- * Handle session form submit
- */
-async function handleSessionFormSubmit(e) {
-    e.preventDefault();
-    
-    const form = e.target;
-    const sessionData = {
-        name: form.sessionName.value,
-        description: form.sessionDescription?.value || '',
-        branch: form.sessionBranch?.value || AUTH_STATE.branch,
-        branchName: form.sessionBranch?.selectedOptions[0]?.text || '',
-        startDate: form.sessionStartDate?.value,
-        endDate: form.sessionEndDate?.value,
-        targetAssetCount: parseInt(form.targetAssetCount?.value) || 0,
-        participants: Array.from(form.participants?.selectedOptions || []).map(o => o.value),
-        participantNames: Array.from(form.participants?.selectedOptions || []).map(o => o.text),
-        notes: form.sessionNotes?.value || ''
+// === Get Session Status Badge ===
+function getSessionStatusBadge(status) {
+    const badges = {
+        [SESSION_STATUS.DRAFT]: { class: 'bg-gray-100 text-gray-800', text: 'مسودة', icon: 'fa-file-alt' },
+        [SESSION_STATUS.ACTIVE]: { class: 'bg-green-100 text-green-800', text: 'نشطة', icon: 'fa-play-circle' },
+        [SESSION_STATUS.PAUSED]: { class: 'bg-yellow-100 text-yellow-800', text: 'متوقفة', icon: 'fa-pause-circle' },
+        [SESSION_STATUS.COMPLETED]: { class: 'bg-blue-100 text-blue-800', text: 'مكتملة', icon: 'fa-check-circle' },
+        [SESSION_STATUS.CANCELLED]: { class: 'bg-red-100 text-red-800', text: 'ملغاة', icon: 'fa-times-circle' }
     };
-
-    const session = await createSession(sessionData);
-    if (session) {
-        closeSessionModal();
-    }
+    
+    return badges[status] || badges[SESSION_STATUS.DRAFT];
 }
 
-/**
- * Show custom modal
- */
-function showCustomModal(title, content) {
-    const modal = document.getElementById('customModal');
-    if (modal) {
-        document.getElementById('customModalTitle').textContent = title;
-        document.getElementById('customModalContent').innerHTML = content;
-        modal.classList.remove('hidden');
-    }
-}
-
-/**
- * Close custom modal
- */
-function closeCustomModal() {
-    document.getElementById('customModal')?.classList.add('hidden');
-}
+// === Export for global access ===
+window.SESSION_STATUS = SESSION_STATUS;
+window.initializeSessionsStore = initializeSessionsStore;
+window.getSessions = getSessions;
+window.getActiveSession = getActiveSession;
+window.createSession = createSession;
+window.updateSession = updateSession;
+window.startSession = startSession;
+window.pauseSession = pauseSession;
+window.completeSession = completeSession;
+window.cancelSession = cancelSession;
+window.deleteSession = deleteSession;
+window.addAssetToSession = addAssetToSession;
+window.getSessionStatistics = getSessionStatistics;
+window.getUserDailyStats = getUserDailyStats;
+window.getAllWorkersStats = getAllWorkersStats;
+window.getCurrentLocation = getCurrentLocation;
+window.generateMapsLink = generateMapsLink;
+window.getSessionStatusBadge = getSessionStatusBadge;
