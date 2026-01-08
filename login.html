@@ -24,6 +24,11 @@
     <!-- Google Fonts - Arabic -->
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
     
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    
     <script>
         tailwind.config = {
             theme: {
@@ -80,150 +85,272 @@
             box-shadow: 0 10px 20px rgba(30, 64, 175, 0.3);
         }
         
-        .loading-spinner {
-            border: 3px solid rgba(255, 255, 255, 0.3);
-            border-top: 3px solid white;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            animation: spin 1s linear infinite;
+        .tab-btn {
+            transition: all 0.3s ease;
         }
         
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        .tab-btn.active {
+            background-color: #1e40af;
+            color: white;
         }
     </style>
 </head>
-<body class="login-bg">
-    <!-- Background Decoration -->
-    <div class="absolute inset-0 overflow-hidden pointer-events-none">
-        <div class="absolute top-20 right-20 w-72 h-72 bg-white/10 rounded-full blur-3xl"></div>
-        <div class="absolute bottom-20 left-20 w-96 h-96 bg-white/10 rounded-full blur-3xl"></div>
-        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-white/5 rounded-full blur-3xl"></div>
-    </div>
-    
-    <div class="min-h-screen flex items-center justify-center p-4 relative z-10">
-        <div class="w-full max-w-md">
-            <!-- Logo & Title -->
-            <div class="text-center mb-8">
-                <div class="floating-icon inline-block bg-white/20 p-6 rounded-2xl mb-4">
-                    <i class="fas fa-building-columns text-5xl text-white"></i>
-                </div>
-                <h1 class="text-3xl font-bold text-white mb-2">نظام جرد الأصول</h1>
-                <p class="text-blue-200">الحكومية</p>
+<body class="font-arabic login-bg flex items-center justify-center p-4">
+    <div class="w-full max-w-md">
+        <!-- Logo & Title -->
+        <div class="text-center mb-8">
+            <div class="floating-icon inline-block bg-white/20 backdrop-blur-sm p-6 rounded-full mb-4">
+                <i class="fas fa-building-columns text-5xl text-white"></i>
+            </div>
+            <h1 class="text-3xl font-bold text-white mb-2">نظام جرد الأصول</h1>
+            <p class="text-white/70">الجهات الحكومية</p>
+        </div>
+        
+        <!-- Login Card -->
+        <div class="login-card rounded-3xl shadow-2xl overflow-hidden">
+            <!-- Tabs -->
+            <div class="flex border-b">
+                <button id="tabLogin" onclick="showTab('login')" class="tab-btn active flex-1 py-4 font-semibold">
+                    <i class="fas fa-sign-in-alt ml-2"></i>تسجيل الدخول
+                </button>
+                <button id="tabRegister" onclick="showTab('register')" class="tab-btn flex-1 py-4 font-semibold text-gray-500">
+                    <i class="fas fa-user-plus ml-2"></i>تسجيل جديد
+                </button>
             </div>
             
-            <!-- Login Card -->
-            <div class="login-card rounded-2xl shadow-2xl p-8">
-                <h2 class="text-2xl font-bold text-gray-800 text-center mb-6">تسجيل الدخول</h2>
-                
-                <!-- Error Message -->
-                <div id="errorMessage" class="hidden bg-red-50 text-red-600 p-4 rounded-xl mb-6 text-sm">
-                    <i class="fas fa-exclamation-circle ml-2"></i>
-                    <span id="errorText"></span>
-                </div>
-                
-                <!-- Login Form -->
+            <!-- Login Form -->
+            <div id="loginPanel" class="p-8">
                 <form id="loginForm" onsubmit="handleLogin(event)">
-                    <!-- Username -->
-                    <div class="mb-5">
-                        <label class="block text-gray-700 font-medium mb-2">
-                            <i class="fas fa-user ml-2 text-gov-blue"></i>
-                            اسم المستخدم
-                        </label>
-                        <input type="text" 
-                               id="username" 
-                               name="username"
-                               required
-                               autocomplete="username"
-                               class="input-field w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:border-gov-blue transition-all"
-                               placeholder="أدخل اسم المستخدم">
+                    <!-- Error Message -->
+                    <div id="errorMessage" class="hidden mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
+                        <i class="fas fa-exclamation-circle ml-2"></i>
+                        <span id="errorText"></span>
                     </div>
                     
-                    <!-- Password -->
+                    <!-- Success Message -->
+                    <div id="successMessage" class="hidden mb-4 p-4 bg-green-50 border border-green-200 rounded-xl text-green-700">
+                        <i class="fas fa-check-circle ml-2"></i>
+                        <span id="successText"></span>
+                    </div>
+                    
+                    <!-- Email/Username Field -->
+                    <div class="mb-4">
+                        <label class="block text-gray-700 font-semibold mb-2">
+                            <i class="fas fa-user text-gov-blue ml-2"></i>
+                            البريد الإلكتروني أو اسم المستخدم
+                        </label>
+                        <input type="text" id="username" required
+                               class="input-field w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-gov-blue outline-none transition-all"
+                               placeholder="admin@gov.sa">
+                    </div>
+                    
+                    <!-- Password Field -->
                     <div class="mb-6">
-                        <label class="block text-gray-700 font-medium mb-2">
-                            <i class="fas fa-lock ml-2 text-gov-blue"></i>
+                        <label class="block text-gray-700 font-semibold mb-2">
+                            <i class="fas fa-lock text-gov-blue ml-2"></i>
                             كلمة المرور
                         </label>
                         <div class="relative">
-                            <input type="password" 
-                                   id="password" 
-                                   name="password"
-                                   required
-                                   autocomplete="current-password"
-                                   class="input-field w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:border-gov-blue transition-all"
-                                   placeholder="أدخل كلمة المرور">
-                            <button type="button" 
-                                    onclick="togglePassword()"
-                                    class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                            <input type="password" id="password" required
+                                   class="input-field w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-gov-blue outline-none transition-all"
+                                   placeholder="••••••••">
+                            <button type="button" onclick="togglePassword()" class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600">
                                 <i id="passwordToggleIcon" class="fas fa-eye"></i>
                             </button>
                         </div>
                     </div>
                     
-                    <!-- Remember Me -->
-                    <div class="flex items-center justify-between mb-6">
+                    <!-- Remember Me & Forgot Password -->
+                    <div class="flex justify-between items-center mb-6">
                         <label class="flex items-center cursor-pointer">
-                            <input type="checkbox" id="rememberMe" class="ml-2 w-4 h-4 text-gov-blue rounded">
-                            <span class="text-gray-600 text-sm">تذكرني</span>
+                            <input type="checkbox" id="rememberMe" class="w-4 h-4 text-gov-blue rounded">
+                            <span class="mr-2 text-gray-600">تذكرني</span>
                         </label>
-                        <a href="#" class="text-gov-blue text-sm hover:underline">نسيت كلمة المرور؟</a>
+                        <a href="#" onclick="showForgotPassword()" class="text-gov-blue hover:underline text-sm">
+                            نسيت كلمة المرور؟
+                        </a>
                     </div>
                     
                     <!-- Login Button -->
-                    <button type="submit" 
-                            id="loginBtn"
-                            class="btn-login w-full text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2">
+                    <button type="submit" id="loginBtn" class="btn-login w-full py-4 rounded-xl text-white font-bold text-lg flex items-center justify-center gap-2">
                         <span id="loginBtnText">تسجيل الدخول</span>
-                        <div id="loginSpinner" class="loading-spinner hidden"></div>
+                        <i id="loginSpinner" class="fas fa-spinner fa-spin hidden"></i>
                     </button>
                 </form>
                 
                 <!-- Demo Accounts -->
-                <div class="mt-8 pt-6 border-t border-gray-200">
-                    <p class="text-gray-500 text-sm text-center mb-4">حسابات تجريبية للاختبار:</p>
-                    <div class="grid grid-cols-3 gap-2">
+                <div class="mt-6 pt-6 border-t border-gray-200">
+                    <p class="text-center text-gray-500 text-sm mb-4">حسابات تجريبية</p>
+                    <div class="grid grid-cols-2 gap-2">
                         <button onclick="fillDemo('admin', 'admin123')" 
-                                class="bg-purple-50 text-purple-700 py-2 px-3 rounded-lg text-xs hover:bg-purple-100 transition-colors">
-                            <i class="fas fa-crown ml-1"></i>
-                            مشرف عام
+                                class="bg-purple-50 text-purple-700 py-2 px-3 rounded-lg text-sm hover:bg-purple-100 transition-colors flex items-center justify-center gap-1">
+                            <i class="fas fa-crown"></i>
+                            مشرف
                         </button>
                         <button onclick="fillDemo('manager_riyadh', 'manager123')" 
-                                class="bg-blue-50 text-blue-700 py-2 px-3 rounded-lg text-xs hover:bg-blue-100 transition-colors">
-                            <i class="fas fa-user-tie ml-1"></i>
-                            مدير فرع
+                                class="bg-blue-50 text-blue-700 py-2 px-3 rounded-lg text-sm hover:bg-blue-100 transition-colors flex items-center justify-center gap-1">
+                            <i class="fas fa-user-tie"></i>
+                            مدير
                         </button>
                         <button onclick="fillDemo('worker1', 'worker123')" 
-                                class="bg-green-50 text-green-700 py-2 px-3 rounded-lg text-xs hover:bg-green-100 transition-colors">
-                            <i class="fas fa-user ml-1"></i>
-                            عامل ميداني
+                                class="bg-green-50 text-green-700 py-2 px-3 rounded-lg text-sm hover:bg-green-100 transition-colors flex items-center justify-center gap-1">
+                            <i class="fas fa-user"></i>
+                            عامل
+                        </button>
+                        <button onclick="fillDemo('client1', 'client123')" 
+                                class="bg-cyan-50 text-cyan-700 py-2 px-3 rounded-lg text-sm hover:bg-cyan-100 transition-colors flex items-center justify-center gap-1">
+                            <i class="fas fa-user-tag"></i>
+                            عميل
                         </button>
                     </div>
                 </div>
             </div>
             
-            <!-- Footer -->
-            <div class="text-center mt-6 text-white/70 text-sm">
-                <p>الإصدار 6.0 - نظام متكامل لجرد وحصر الأصول</p>
-                <p class="mt-1">يعمل بدون إنترنت • PWA</p>
+            <!-- Register Form -->
+            <div id="registerPanel" class="p-8 hidden">
+                <form id="registerForm" onsubmit="handleRegister(event)">
+                    <!-- Error Message -->
+                    <div id="registerErrorMessage" class="hidden mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
+                        <i class="fas fa-exclamation-circle ml-2"></i>
+                        <span id="registerErrorText"></span>
+                    </div>
+                    
+                    <!-- Full Name -->
+                    <div class="mb-4">
+                        <label class="block text-gray-700 font-semibold mb-2">
+                            <i class="fas fa-user text-gov-blue ml-2"></i>
+                            الاسم الكامل *
+                        </label>
+                        <input type="text" id="regName" required
+                               class="input-field w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-gov-blue outline-none transition-all"
+                               placeholder="الاسم الكامل">
+                    </div>
+                    
+                    <!-- Email -->
+                    <div class="mb-4">
+                        <label class="block text-gray-700 font-semibold mb-2">
+                            <i class="fas fa-envelope text-gov-blue ml-2"></i>
+                            البريد الإلكتروني *
+                        </label>
+                        <input type="email" id="regEmail" required
+                               class="input-field w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-gov-blue outline-none transition-all"
+                               placeholder="example@company.com">
+                    </div>
+                    
+                    <!-- Phone -->
+                    <div class="mb-4">
+                        <label class="block text-gray-700 font-semibold mb-2">
+                            <i class="fas fa-phone text-gov-blue ml-2"></i>
+                            رقم الهاتف
+                        </label>
+                        <input type="tel" id="regPhone"
+                               class="input-field w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-gov-blue outline-none transition-all"
+                               placeholder="05XXXXXXXX">
+                    </div>
+                    
+                    <!-- Password -->
+                    <div class="mb-4">
+                        <label class="block text-gray-700 font-semibold mb-2">
+                            <i class="fas fa-lock text-gov-blue ml-2"></i>
+                            كلمة المرور *
+                        </label>
+                        <input type="password" id="regPassword" required minlength="6"
+                               class="input-field w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-gov-blue outline-none transition-all"
+                               placeholder="6 أحرف على الأقل">
+                    </div>
+                    
+                    <!-- Confirm Password -->
+                    <div class="mb-6">
+                        <label class="block text-gray-700 font-semibold mb-2">
+                            <i class="fas fa-lock text-gov-blue ml-2"></i>
+                            تأكيد كلمة المرور *
+                        </label>
+                        <input type="password" id="regConfirmPassword" required
+                               class="input-field w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-gov-blue outline-none transition-all"
+                               placeholder="أعد كتابة كلمة المرور">
+                    </div>
+                    
+                    <!-- Register Button -->
+                    <button type="submit" id="registerBtn" class="btn-login w-full py-4 rounded-xl text-white font-bold text-lg flex items-center justify-center gap-2">
+                        <span id="registerBtnText">إنشاء حساب</span>
+                        <i id="registerSpinner" class="fas fa-spinner fa-spin hidden"></i>
+                    </button>
+                    
+                    <p class="text-center text-gray-500 text-sm mt-4">
+                        سيتم إنشاء حسابك كـ "عميل" ويمكن للمشرف تغيير صلاحياتك لاحقاً
+                    </p>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="text-center mt-6 text-white/70 text-sm">
+            <p>الإصدار 6.5 - نظام متكامل لجرد وحصر الأصول</p>
+            <p class="mt-1">يعمل بدون إنترنت • PWA • Firebase</p>
+        </div>
+    </div>
+    
+    <!-- Forgot Password Modal -->
+    <div id="forgotPasswordModal" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 hidden z-50">
+        <div class="bg-white rounded-2xl p-6 max-w-md w-full">
+            <h3 class="text-xl font-bold mb-4"><i class="fas fa-key text-gov-blue ml-2"></i>استعادة كلمة المرور</h3>
+            <p class="text-gray-600 mb-4">أدخل بريدك الإلكتروني وسنرسل لك رابط لإعادة تعيين كلمة المرور</p>
+            <input type="email" id="forgotEmail" 
+                   class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl mb-4"
+                   placeholder="البريد الإلكتروني">
+            <div class="flex gap-2">
+                <button onclick="sendResetEmail()" class="flex-1 bg-gov-blue text-white py-3 rounded-xl font-semibold">
+                    إرسال
+                </button>
+                <button onclick="closeForgotPassword()" class="flex-1 bg-gray-200 py-3 rounded-xl font-semibold">
+                    إلغاء
+                </button>
             </div>
         </div>
     </div>
     
     <!-- Scripts -->
     <script>
-        // Database setup for login page
+        // Firebase Configuration
+        const FIREBASE_CONFIG = {
+            apiKey: "AIzaSyD4YmVKC1ByE-o5qWoeyHt5mIVM8v_v4ZM",
+            authDomain: "aset-5be72.firebaseapp.com",
+            projectId: "aset-5be72",
+            storageBucket: "aset-5be72.firebasestorage.app",
+            messagingSenderId: "4190814584",
+            appId: "1:4190814584:web:c1e2354b04344a16db088d"
+        };
+        
+        // Database setup
         const DB_NAME = 'AssetInventoryDB';
-        const DB_VERSION = 4;
+        const DB_VERSION = 5;
         let db = null;
+        let firebaseApp = null;
+        let firebaseAuth = null;
+        let firebaseDb = null;
         
         // Initialize
         document.addEventListener('DOMContentLoaded', async () => {
             await initDB();
+            await initFirebase();
             await checkExistingSession();
         });
+        
+        // Initialize Firebase
+        async function initFirebase() {
+            try {
+                if (!firebase.apps.length) {
+                    firebaseApp = firebase.initializeApp(FIREBASE_CONFIG);
+                } else {
+                    firebaseApp = firebase.app();
+                }
+                firebaseAuth = firebase.auth();
+                firebaseDb = firebase.firestore();
+                console.log('Firebase initialized');
+            } catch (e) {
+                console.log('Firebase initialization error:', e);
+            }
+        }
         
         // Initialize IndexedDB
         async function initDB() {
@@ -239,7 +366,6 @@
                 request.onupgradeneeded = (event) => {
                     const database = event.target.result;
                     
-                    // Create stores if not exist
                     const stores = ['assets', 'departments', 'maintenance', 'inventory_logs', 
                                     'settings', 'sync_queue', 'activityLogs', 'assetLocations',
                                     'users', 'branches', 'audit_sessions', 'session_scans',
@@ -257,11 +383,25 @@
         // Check for existing session
         async function checkExistingSession() {
             try {
+                // Check Firebase auth state
+                if (firebaseAuth) {
+                    firebaseAuth.onAuthStateChanged(async (user) => {
+                        if (user) {
+                            // User is signed in with Firebase
+                            const userData = await getFirebaseUserData(user.uid);
+                            if (userData) {
+                                createSession(user.uid, userData);
+                                window.location.href = 'index.html';
+                            }
+                        }
+                    });
+                }
+                
+                // Check local session
                 const sessionData = localStorage.getItem('auth_session');
                 if (sessionData) {
                     const session = JSON.parse(sessionData);
                     if (new Date(session.expiresAt) > new Date()) {
-                        // Session still valid, redirect to main app
                         window.location.href = 'index.html';
                     }
                 }
@@ -270,57 +410,72 @@
             }
         }
         
+        // Get Firebase user data
+        async function getFirebaseUserData(uid) {
+            try {
+                if (firebaseDb) {
+                    const doc = await firebaseDb.collection('users').doc(uid).get();
+                    if (doc.exists) {
+                        return doc.data();
+                    }
+                }
+                return null;
+            } catch (e) {
+                console.log('Error getting Firebase user data:', e);
+                return null;
+            }
+        }
+        
         // Handle login
         async function handleLogin(event) {
             event.preventDefault();
             
-            const username = document.getElementById('username').value.trim();
+            const emailOrUsername = document.getElementById('username').value.trim();
             const password = document.getElementById('password').value;
             const rememberMe = document.getElementById('rememberMe').checked;
             
-            // Show loading
-            const btn = document.getElementById('loginBtn');
-            const btnText = document.getElementById('loginBtnText');
-            const spinner = document.getElementById('loginSpinner');
-            
-            btn.disabled = true;
-            btnText.textContent = 'جاري تسجيل الدخول...';
-            spinner.classList.remove('hidden');
-            
+            showLoading('loginBtn', 'loginBtnText', 'loginSpinner');
             hideError();
             
             try {
-                // Get users from DB
-                const users = await getAllFromStore('users');
+                let user = null;
+                let userData = null;
                 
-                // Initialize demo users if empty
-                if (users.length === 0) {
-                    await initializeDemoUsers();
-                    return handleLogin(event);
+                // Try Firebase authentication first
+                if (firebaseAuth && emailOrUsername.includes('@')) {
+                    try {
+                        const result = await firebaseAuth.signInWithEmailAndPassword(emailOrUsername, password);
+                        userData = await getFirebaseUserData(result.user.uid);
+                        if (userData) {
+                            user = { id: result.user.uid, ...userData };
+                        }
+                    } catch (firebaseError) {
+                        console.log('Firebase auth failed, trying local:', firebaseError.message);
+                    }
                 }
                 
-                // Find user
-                const user = users.find(u => 
-                    (u.username === username || u.email === username) && 
-                    u.password === password && 
-                    u.active
-                );
-                
+                // Fallback to local authentication
                 if (!user) {
-                    throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة');
+                    const users = await getAllFromStore('users');
+                    
+                    if (users.length === 0) {
+                        await initializeDemoUsers();
+                        return handleLogin(event);
+                    }
+                    
+                    user = users.find(u => 
+                        (u.username === emailOrUsername || u.email === emailOrUsername) && 
+                        u.password === password && 
+                        u.active !== false
+                    );
+                    
+                    if (!user) {
+                        throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة');
+                    }
                 }
                 
                 // Create session
-                const session = {
-                    userId: user.id,
-                    userRole: user.role,
-                    userBranch: user.branch,
-                    userName: user.name,
-                    loginTime: new Date().toISOString(),
-                    expiresAt: new Date(Date.now() + (rememberMe ? 7 : 1) * 24 * 60 * 60 * 1000).toISOString()
-                };
-                
-                localStorage.setItem('auth_session', JSON.stringify(session));
+                createSession(user.id, user, rememberMe);
                 
                 // Log activity
                 await putToStore('activityLogs', {
@@ -332,16 +487,108 @@
                     timestamp: new Date().toISOString()
                 });
                 
-                // Redirect
                 window.location.href = 'index.html';
                 
             } catch (error) {
                 showError(error.message);
             } finally {
-                btn.disabled = false;
-                btnText.textContent = 'تسجيل الدخول';
-                spinner.classList.add('hidden');
+                hideLoading('loginBtn', 'loginBtnText', 'loginSpinner', 'تسجيل الدخول');
             }
+        }
+        
+        // Handle registration
+        async function handleRegister(event) {
+            event.preventDefault();
+            
+            const name = document.getElementById('regName').value.trim();
+            const email = document.getElementById('regEmail').value.trim();
+            const phone = document.getElementById('regPhone').value.trim();
+            const password = document.getElementById('regPassword').value;
+            const confirmPassword = document.getElementById('regConfirmPassword').value;
+            
+            showLoading('registerBtn', 'registerBtnText', 'registerSpinner');
+            hideRegisterError();
+            
+            try {
+                // Validate
+                if (password !== confirmPassword) {
+                    throw new Error('كلمتا المرور غير متطابقتين');
+                }
+                
+                if (password.length < 6) {
+                    throw new Error('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+                }
+                
+                // Check if user exists
+                const users = await getAllFromStore('users');
+                if (users.find(u => u.email === email)) {
+                    throw new Error('البريد الإلكتروني مستخدم بالفعل');
+                }
+                
+                let userId = 'user-' + Date.now();
+                
+                // Try Firebase registration
+                if (firebaseAuth) {
+                    try {
+                        const result = await firebaseAuth.createUserWithEmailAndPassword(email, password);
+                        userId = result.user.uid;
+                        
+                        // Save to Firestore
+                        if (firebaseDb) {
+                            await firebaseDb.collection('users').doc(userId).set({
+                                name: name,
+                                email: email,
+                                phone: phone,
+                                role: 'client', // Default role
+                                active: true,
+                                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                            });
+                        }
+                    } catch (firebaseError) {
+                        console.log('Firebase registration failed:', firebaseError.message);
+                        // Continue with local registration
+                    }
+                }
+                
+                // Save locally
+                const newUser = {
+                    id: userId,
+                    username: email.split('@')[0],
+                    name: name,
+                    email: email,
+                    phone: phone,
+                    password: password,
+                    role: 'client',
+                    active: true,
+                    createdAt: new Date().toISOString()
+                };
+                
+                await putToStore('users', newUser);
+                
+                // Show success and switch to login
+                showSuccess('تم إنشاء الحساب بنجاح! يمكنك الآن تسجيل الدخول');
+                showTab('login');
+                document.getElementById('username').value = email;
+                
+            } catch (error) {
+                showRegisterError(error.message);
+            } finally {
+                hideLoading('registerBtn', 'registerBtnText', 'registerSpinner', 'إنشاء حساب');
+            }
+        }
+        
+        // Create session
+        function createSession(userId, userData, rememberMe = false) {
+            const session = {
+                userId: userId,
+                userRole: userData.role,
+                userBranch: userData.branch,
+                userName: userData.name,
+                userEmail: userData.email,
+                loginTime: new Date().toISOString(),
+                expiresAt: new Date(Date.now() + (rememberMe ? 7 : 1) * 24 * 60 * 60 * 1000).toISOString()
+            };
+            localStorage.setItem('auth_session', JSON.stringify(session));
         }
         
         // Initialize demo users
@@ -382,6 +629,17 @@
                     employeeId: 'EMP-004',
                     active: true,
                     createdAt: new Date().toISOString()
+                },
+                {
+                    id: 'client-001',
+                    username: 'client1',
+                    password: 'client123',
+                    name: 'محمد العميل',
+                    email: 'client@company.com',
+                    role: 'client',
+                    branch: null,
+                    active: true,
+                    createdAt: new Date().toISOString()
                 }
             ];
             
@@ -408,6 +666,55 @@
             
             for (const branch of demoBranches) {
                 await putToStore('branches', branch);
+            }
+        }
+        
+        // Show/Hide tabs
+        function showTab(tab) {
+            const loginPanel = document.getElementById('loginPanel');
+            const registerPanel = document.getElementById('registerPanel');
+            const tabLogin = document.getElementById('tabLogin');
+            const tabRegister = document.getElementById('tabRegister');
+            
+            if (tab === 'login') {
+                loginPanel.classList.remove('hidden');
+                registerPanel.classList.add('hidden');
+                tabLogin.classList.add('active');
+                tabRegister.classList.remove('active');
+            } else {
+                loginPanel.classList.add('hidden');
+                registerPanel.classList.remove('hidden');
+                tabLogin.classList.remove('active');
+                tabRegister.classList.add('active');
+            }
+        }
+        
+        // Forgot password
+        function showForgotPassword() {
+            document.getElementById('forgotPasswordModal').classList.remove('hidden');
+        }
+        
+        function closeForgotPassword() {
+            document.getElementById('forgotPasswordModal').classList.add('hidden');
+        }
+        
+        async function sendResetEmail() {
+            const email = document.getElementById('forgotEmail').value.trim();
+            if (!email) {
+                alert('الرجاء إدخال البريد الإلكتروني');
+                return;
+            }
+            
+            try {
+                if (firebaseAuth) {
+                    await firebaseAuth.sendPasswordResetEmail(email);
+                    alert('تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني');
+                    closeForgotPassword();
+                } else {
+                    alert('Firebase غير متصل. يرجى التواصل مع المشرف لإعادة تعيين كلمة المرور');
+                }
+            } catch (e) {
+                alert('خطأ: ' + e.message);
             }
         }
         
@@ -462,6 +769,36 @@
         
         function hideError() {
             document.getElementById('errorMessage').classList.add('hidden');
+        }
+        
+        function showRegisterError(message) {
+            const errorDiv = document.getElementById('registerErrorMessage');
+            const errorText = document.getElementById('registerErrorText');
+            errorText.textContent = message;
+            errorDiv.classList.remove('hidden');
+        }
+        
+        function hideRegisterError() {
+            document.getElementById('registerErrorMessage').classList.add('hidden');
+        }
+        
+        function showSuccess(message) {
+            const successDiv = document.getElementById('successMessage');
+            const successText = document.getElementById('successText');
+            successText.textContent = message;
+            successDiv.classList.remove('hidden');
+        }
+        
+        function showLoading(btnId, textId, spinnerId) {
+            document.getElementById(btnId).disabled = true;
+            document.getElementById(textId).textContent = 'جاري المعالجة...';
+            document.getElementById(spinnerId).classList.remove('hidden');
+        }
+        
+        function hideLoading(btnId, textId, spinnerId, originalText) {
+            document.getElementById(btnId).disabled = false;
+            document.getElementById(textId).textContent = originalText;
+            document.getElementById(spinnerId).classList.add('hidden');
         }
     </script>
 </body>

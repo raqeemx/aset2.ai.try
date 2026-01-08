@@ -681,62 +681,91 @@ async function loadAllData() {
 }
 
 async function fetchAndMergeServerData() {
+    // Check if API_BASE is properly configured
+    if (!API_BASE || API_BASE === 'tables') {
+        console.log('Using RESTful Table API for data sync');
+    }
+    
     try {
+        let syncSuccessful = false;
+        
         // Load assets from server
-        const assetsResponse = await fetch(`${API_BASE}/assets?limit=1000`);
-        if (assetsResponse.ok) {
-            const assetsData = await assetsResponse.json();
-            const serverAssets = assetsData.data || [];
-            
-            // Merge with local data (server takes precedence for same IDs)
-            for (const asset of serverAssets) {
-                await dbPut(STORES.assets, asset);
+        try {
+            const assetsResponse = await fetch(`${API_BASE}/assets?limit=1000`);
+            if (assetsResponse.ok) {
+                const assetsData = await assetsResponse.json();
+                const serverAssets = assetsData.data || [];
+                
+                // Merge with local data (server takes precedence for same IDs)
+                for (const asset of serverAssets) {
+                    await dbPut(STORES.assets, asset);
+                }
+                APP_STATE.assets = await dbGetAll(STORES.assets);
+                syncSuccessful = true;
             }
-            APP_STATE.assets = await dbGetAll(STORES.assets);
+        } catch (e) {
+            console.log('Assets sync skipped - server not available');
         }
         
         // Load departments from server
-        const deptResponse = await fetch(`${API_BASE}/departments?limit=100`);
-        if (deptResponse.ok) {
-            const deptData = await deptResponse.json();
-            const serverDepts = deptData.data || [];
-            
-            for (const dept of serverDepts) {
-                await dbPut(STORES.departments, dept);
+        try {
+            const deptResponse = await fetch(`${API_BASE}/departments?limit=100`);
+            if (deptResponse.ok) {
+                const deptData = await deptResponse.json();
+                const serverDepts = deptData.data || [];
+                
+                for (const dept of serverDepts) {
+                    await dbPut(STORES.departments, dept);
+                }
+                APP_STATE.departments = await dbGetAll(STORES.departments);
+                syncSuccessful = true;
             }
-            APP_STATE.departments = await dbGetAll(STORES.departments);
+        } catch (e) {
+            console.log('Departments sync skipped - server not available');
         }
         
         // Load maintenance records
-        const maintResponse = await fetch(`${API_BASE}/maintenance?limit=100`);
-        if (maintResponse.ok) {
-            const maintData = await maintResponse.json();
-            const serverMaint = maintData.data || [];
-            
-            for (const maint of serverMaint) {
-                await dbPut(STORES.maintenance, maint);
+        try {
+            const maintResponse = await fetch(`${API_BASE}/maintenance?limit=100`);
+            if (maintResponse.ok) {
+                const maintData = await maintResponse.json();
+                const serverMaint = maintData.data || [];
+                
+                for (const maint of serverMaint) {
+                    await dbPut(STORES.maintenance, maint);
+                }
+                APP_STATE.maintenance = await dbGetAll(STORES.maintenance);
+                syncSuccessful = true;
             }
-            APP_STATE.maintenance = await dbGetAll(STORES.maintenance);
+        } catch (e) {
+            console.log('Maintenance sync skipped - server not available');
         }
         
         // Load inventory logs
-        const invResponse = await fetch(`${API_BASE}/inventory_logs?limit=100`);
-        if (invResponse.ok) {
-            const invData = await invResponse.json();
-            const serverInv = invData.data || [];
-            
-            for (const inv of serverInv) {
-                await dbPut(STORES.inventoryLogs, inv);
+        try {
+            const invResponse = await fetch(`${API_BASE}/inventory_logs?limit=100`);
+            if (invResponse.ok) {
+                const invData = await invResponse.json();
+                const serverInv = invData.data || [];
+                
+                for (const inv of serverInv) {
+                    await dbPut(STORES.inventoryLogs, inv);
+                }
+                APP_STATE.inventoryLogs = await dbGetAll(STORES.inventoryLogs);
+                syncSuccessful = true;
             }
-            APP_STATE.inventoryLogs = await dbGetAll(STORES.inventoryLogs);
+        } catch (e) {
+            console.log('Inventory logs sync skipped - server not available');
         }
         
-        APP_STATE.lastSync = new Date();
-        saveSettings();
+        if (syncSuccessful) {
+            APP_STATE.lastSync = new Date();
+            saveSettings();
+        }
         updateSyncStatus();
         
     } catch (error) {
-        console.error('Error fetching server data:', error);
+        console.log('Server sync deferred - working in offline mode');
     }
 }
 
@@ -5371,77 +5400,7 @@ function addLocationFromAssetForm() {
     showToast('تم إضافة الموقع بنجاح', 'success');
 }
 
-// Update showPage to include new pages
-const originalShowPage = showPage;
-showPage = function(pageName) {
-    // Hide all pages
-    document.querySelectorAll('.page-content').forEach(page => {
-        page.classList.add('hidden');
-    });
-    
-    // Show selected page
-    const targetPage = document.getElementById(`page-${pageName}`);
-    if (targetPage) {
-        targetPage.classList.remove('hidden');
-    }
-    
-    // Update navigation
-    document.querySelectorAll('.nav-link').forEach(link => {
-        link.classList.remove('active');
-    });
-    if (event && event.target) {
-        const navLink = event.target.closest('.nav-link');
-        if (navLink) navLink.classList.add('active');
-    }
-    
-    // Update page title
-    const titles = {
-        'dashboard': 'لوحة التحكم',
-        'assets': 'إدارة الأصول',
-        'inventory': 'عمليات الجرد',
-        'departments': 'الإدارات والأقسام',
-        'locations': 'مواقع الأصول',
-        'reports': 'التقارير',
-        'maintenance': 'الصيانة',
-        'settings': 'الإعدادات',
-        'activity': 'سجل النشاط'
-    };
-    const titleEl = document.getElementById('pageTitle');
-    if (titleEl) {
-        titleEl.textContent = titles[pageName] || pageName;
-    }
-    
-    // Close mobile sidebar
-    const sidebar = document.getElementById('sidebar');
-    if (sidebar) sidebar.classList.remove('open');
-    
-    // Page-specific actions
-    if (pageName === 'assets') {
-        renderAssetsTable();
-    } else if (pageName === 'departments') {
-        renderDepartments();
-    } else if (pageName === 'locations') {
-        renderAssetLocationsPage();
-    } else if (pageName === 'maintenance') {
-        renderMaintenanceTable();
-        updateMaintenanceStats();
-    } else if (pageName === 'settings') {
-        renderCategoriesList();
-        renderCategories2List();
-        renderCategories3List();
-        renderLocationsList();
-        renderAssigneesList();
-        renderAssetNamesList();
-        renderSuppliersList();
-        renderStorageInfo();
-    } else if (pageName === 'inventory') {
-        renderInventoryLogs();
-    } else if (pageName === 'activity') {
-        renderActivityLogs();
-    } else if (pageName === 'dashboard') {
-        renderAssetPerformanceIndicator();
-    }
-};
+// Note: showPage is redefined later with more complete functionality including sessions, users, branches pages
 
 // Update dashboard to include new stats
 const originalUpdateDashboard = updateDashboard;
@@ -6265,6 +6224,7 @@ async function renderUsersPage() {
         const admins = users.filter(u => u.role === 'admin').length;
         const managers = users.filter(u => u.role === 'manager').length;
         const fieldUsers = users.filter(u => u.role === 'field_user').length;
+        const clients = users.filter(u => u.role === 'client').length;
         
         document.getElementById('adminUsersCount').textContent = admins;
         document.getElementById('managerUsersCount').textContent = managers;
@@ -6281,14 +6241,18 @@ async function renderUsersPage() {
                 const roleClass = {
                     admin: 'bg-purple-100 text-purple-800',
                     manager: 'bg-blue-100 text-blue-800',
-                    field_user: 'bg-green-100 text-green-800'
+                    field_user: 'bg-green-100 text-green-800',
+                    client: 'bg-cyan-100 text-cyan-800'
                 }[user.role] || 'bg-gray-100 text-gray-800';
                 
                 const roleName = {
                     admin: 'مشرف عام',
                     manager: 'مدير فرع',
-                    field_user: 'عامل ميداني'
+                    field_user: 'عامل ميداني',
+                    client: 'عميل'
                 }[user.role] || user.role;
+                
+                const hasCustomPerms = user.customPermissions ? '<i class="fas fa-shield-alt text-purple-500 mr-1" title="صلاحيات مخصصة"></i>' : '';
                 
                 return `
                     <tr class="border-b hover:bg-gray-50">
@@ -6303,12 +6267,12 @@ async function renderUsersPage() {
                         <td class="py-4 px-4">${user.username}</td>
                         <td class="py-4 px-4">${user.email}</td>
                         <td class="py-4 px-4">
-                            <span class="px-3 py-1 rounded-full text-xs font-medium ${roleClass}">${roleName}</span>
+                            <span class="px-3 py-1 rounded-full text-xs font-medium ${roleClass}">${hasCustomPerms}${roleName}</span>
                         </td>
                         <td class="py-4 px-4">${branch?.name || '-'}</td>
                         <td class="py-4 px-4">
-                            <span class="px-3 py-1 rounded-full text-xs font-medium ${user.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
-                                ${user.active ? 'نشط' : 'معطل'}
+                            <span class="px-3 py-1 rounded-full text-xs font-medium ${user.active !== false ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                                ${user.active !== false ? 'نشط' : 'معطل'}
                             </span>
                         </td>
                         <td class="py-4 px-4 text-center">
@@ -6316,8 +6280,11 @@ async function renderUsersPage() {
                                 <button onclick="editUser('${user.id}')" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg" title="تعديل">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <button onclick="handleToggleUser('${user.id}')" class="p-2 ${user.active ? 'text-red-600 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'} rounded-lg" title="${user.active ? 'تعطيل' : 'تفعيل'}">
-                                    <i class="fas ${user.active ? 'fa-ban' : 'fa-check'}"></i>
+                                <button onclick="openPermissionsModal('${user.id}')" class="p-2 text-purple-600 hover:bg-purple-50 rounded-lg" title="الصلاحيات">
+                                    <i class="fas fa-shield-alt"></i>
+                                </button>
+                                <button onclick="handleToggleUser('${user.id}')" class="p-2 ${user.active !== false ? 'text-red-600 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'} rounded-lg" title="${user.active !== false ? 'تعطيل' : 'تفعيل'}">
+                                    <i class="fas ${user.active !== false ? 'fa-ban' : 'fa-check'}"></i>
                                 </button>
                             </div>
                         </td>
@@ -6327,6 +6294,75 @@ async function renderUsersPage() {
         }
     } catch (error) {
         console.error('Error rendering users page:', error);
+    }
+}
+
+// Update form based on selected role
+function updateUserFormByRole() {
+    const role = document.getElementById('userRole').value;
+    const descEl = document.getElementById('roleDescription');
+    const branchContainer = document.getElementById('userBranchContainer');
+    const customPermsContainer = document.getElementById('customPermissionsContainer');
+    
+    const descriptions = {
+        admin: 'وصول كامل لجميع الفروع والبيانات والإعدادات',
+        manager: 'إدارة الأصول والعمال في فرعه فقط',
+        field_user: 'إضافة الأصول أثناء الجرد ورؤية أصوله فقط',
+        client: 'رؤية وتعديل بياناته الخاصة فقط'
+    };
+    
+    if (descEl) {
+        descEl.textContent = descriptions[role] || '';
+    }
+    
+    // Show/hide branch field based on role
+    if (branchContainer) {
+        if (role === 'admin') {
+            branchContainer.style.display = 'none';
+        } else {
+            branchContainer.style.display = 'block';
+        }
+    }
+    
+    // Show custom permissions for admin users only
+    if (customPermsContainer) {
+        if (AUTH_STATE?.userRole === 'admin' && (role === 'manager' || role === 'client')) {
+            customPermsContainer.classList.remove('hidden');
+        } else {
+            customPermsContainer.classList.add('hidden');
+        }
+    }
+}
+
+// Open permissions modal for user
+async function openPermissionsModal(userId) {
+    const user = await dbGet('users', userId);
+    if (!user) return;
+    
+    // For simplicity, we'll use the user modal with custom permissions visible
+    await editUser(userId);
+    
+    // Show custom permissions section
+    const customPermsContainer = document.getElementById('customPermissionsContainer');
+    if (customPermsContainer && AUTH_STATE?.userRole === 'admin') {
+        customPermsContainer.classList.remove('hidden');
+        
+        // Load custom permissions if any
+        if (user.customPermissions) {
+            const perms = user.customPermissions;
+            if (document.getElementById('permViewAllBranches')) 
+                document.getElementById('permViewAllBranches').checked = perms.canViewAllBranches || false;
+            if (document.getElementById('permManageUsers')) 
+                document.getElementById('permManageUsers').checked = perms.canManageUsers || false;
+            if (document.getElementById('permDeleteAssets')) 
+                document.getElementById('permDeleteAssets').checked = perms.canDeleteAssets || false;
+            if (document.getElementById('permExportData')) 
+                document.getElementById('permExportData').checked = perms.canExportData || false;
+            if (document.getElementById('permViewReports')) 
+                document.getElementById('permViewReports').checked = perms.canViewReports || false;
+            if (document.getElementById('permManageSessions')) 
+                document.getElementById('permManageSessions').checked = perms.canManageSessions || false;
+        }
     }
 }
 
@@ -6373,12 +6409,25 @@ async function handleUserSubmit(event) {
         name: document.getElementById('userName').value,
         username: document.getElementById('userUsername').value,
         email: document.getElementById('userEmail').value,
-        employeeId: document.getElementById('userEmployeeId').value,
-        phone: document.getElementById('userPhone').value,
+        employeeId: document.getElementById('userEmployeeId').value || '',
+        phone: document.getElementById('userPhone').value || '',
         role: document.getElementById('userRole').value,
-        branch: document.getElementById('userBranch').value,
+        branch: document.getElementById('userBranch').value || null,
         active: true
     };
+    
+    // Collect custom permissions if visible
+    const customPermsContainer = document.getElementById('customPermissionsContainer');
+    if (customPermsContainer && !customPermsContainer.classList.contains('hidden')) {
+        userData.customPermissions = {
+            canViewAllBranches: document.getElementById('permViewAllBranches')?.checked || false,
+            canManageUsers: document.getElementById('permManageUsers')?.checked || false,
+            canDeleteAssets: document.getElementById('permDeleteAssets')?.checked || false,
+            canExportData: document.getElementById('permExportData')?.checked || false,
+            canViewReports: document.getElementById('permViewReports')?.checked || false,
+            canManageSessions: document.getElementById('permManageSessions')?.checked || false
+        };
+    }
     
     if (password) {
         userData.password = password;
@@ -6386,18 +6435,31 @@ async function handleUserSubmit(event) {
     
     try {
         if (userId) {
-            await updateUser(userId, userData);
+            // Update existing user
+            const existingUser = await dbGet('users', userId);
+            if (existingUser) {
+                const updatedUser = { ...existingUser, ...userData, updatedAt: new Date().toISOString() };
+                if (!password) delete updatedUser.password; // Keep existing password
+                await dbPut('users', updatedUser);
+            }
             showToast('تم تحديث المستخدم بنجاح', 'success');
         } else {
-            userData.password = password; // Required for new user
-            await createUser(userData);
+            // Create new user
+            if (!password) {
+                showToast('كلمة المرور مطلوبة للمستخدم الجديد', 'error');
+                return;
+            }
+            userData.id = 'user-' + Date.now();
+            userData.password = password;
+            userData.createdAt = new Date().toISOString();
+            await dbPut('users', userData);
             showToast('تم إضافة المستخدم بنجاح', 'success');
         }
         
         closeUserModal();
         renderUsersPage();
     } catch (error) {
-        showToast(error.message, 'error');
+        showToast(error.message || 'حدث خطأ', 'error');
     }
 }
 
@@ -6414,15 +6476,50 @@ async function editUser(userId) {
     document.getElementById('userPhone').value = user.phone || '';
     document.getElementById('userRole').value = user.role;
     document.getElementById('userBranch').value = user.branch || '';
+    
+    // Update form based on role
+    updateUserFormByRole();
+    
+    // Load custom permissions if any
+    if (user.customPermissions && AUTH_STATE?.userRole === 'admin') {
+        const customPermsContainer = document.getElementById('customPermissionsContainer');
+        if (customPermsContainer) {
+            customPermsContainer.classList.remove('hidden');
+            
+            const perms = user.customPermissions;
+            const permCheckboxes = {
+                'permViewAllBranches': perms.canViewAllBranches,
+                'permManageUsers': perms.canManageUsers,
+                'permDeleteAssets': perms.canDeleteAssets,
+                'permExportData': perms.canExportData,
+                'permViewReports': perms.canViewReports,
+                'permManageSessions': perms.canManageSessions
+            };
+            
+            Object.entries(permCheckboxes).forEach(([id, value]) => {
+                const el = document.getElementById(id);
+                if (el) el.checked = value || false;
+            });
+        }
+    }
 }
 
 async function handleToggleUser(userId) {
     try {
-        const user = await toggleUserStatus(userId);
+        const user = await dbGet('users', userId);
+        if (!user) {
+            showToast('المستخدم غير موجود', 'error');
+            return;
+        }
+        
+        user.active = !user.active;
+        user.updatedAt = new Date().toISOString();
+        await dbPut('users', user);
+        
         showToast(user.active ? 'تم تفعيل المستخدم' : 'تم تعطيل المستخدم', 'info');
         renderUsersPage();
     } catch (error) {
-        showToast(error.message, 'error');
+        showToast(error.message || 'حدث خطأ', 'error');
     }
 }
 
@@ -6629,11 +6726,24 @@ showPage = function(pageName) {
     
     // Page-specific actions
     switch (pageName) {
+        case 'dashboard':
+            if (typeof renderAssetPerformanceIndicator === 'function') {
+                renderAssetPerformanceIndicator();
+            }
+            if (typeof initializeAdminDashboard === 'function' && AUTH_STATE?.userRole === 'admin') {
+                initializeAdminDashboard();
+            }
+            break;
         case 'assets':
             renderAssetsTable();
             break;
         case 'departments':
             renderDepartments();
+            break;
+        case 'locations':
+            if (typeof renderAssetLocationsPage === 'function') {
+                renderAssetLocationsPage();
+            }
             break;
         case 'maintenance':
             renderMaintenanceTable();
@@ -6641,8 +6751,12 @@ showPage = function(pageName) {
             break;
         case 'settings':
             renderCategoriesList();
+            if (typeof renderCategories2List === 'function') renderCategories2List();
+            if (typeof renderCategories3List === 'function') renderCategories3List();
             renderLocationsList();
             renderAssigneesList();
+            if (typeof renderAssetNamesList === 'function') renderAssetNamesList();
+            if (typeof renderSuppliersList === 'function') renderSuppliersList();
             renderStorageInfo();
             break;
         case 'inventory':
@@ -6795,6 +6909,14 @@ function getPosition() {
 }
 
 // Export functions globally
+// Database functions
+window.dbGet = dbGet;
+window.dbGetAll = dbGetAll;
+window.dbPut = dbPut;
+window.dbDelete = dbDelete;
+window.APP_STATE = APP_STATE;
+
+// Session functions
 window.renderSessionsPage = renderSessionsPage;
 window.openSessionModal = openSessionModal;
 window.closeSessionModal = closeSessionModal;
@@ -6804,13 +6926,16 @@ window.handlePauseSession = handlePauseSession;
 window.handleCompleteSession = handleCompleteSession;
 window.editSession = editSession;
 
+// User management functions
 window.renderUsersPage = renderUsersPage;
 window.openUserModal = openUserModal;
 window.closeUserModal = closeUserModal;
 window.handleUserSubmit = handleUserSubmit;
 window.editUser = editUser;
 window.handleToggleUser = handleToggleUser;
+window.updateUserFormByRole = updateUserFormByRole;
 
+// Branch management functions
 window.renderBranchesPage = renderBranchesPage;
 window.openBranchModal = openBranchModal;
 window.closeBranchModal = closeBranchModal;
@@ -6818,6 +6943,7 @@ window.handleBranchSubmit = handleBranchSubmit;
 window.editBranch = editBranch;
 window.handleDeleteBranch = handleDeleteBranch;
 
+// Location functions
 window.captureAssetLocation = captureAssetLocation;
 
 // === Admin Dashboard Functions ===

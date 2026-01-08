@@ -1991,12 +1991,14 @@
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-2">الصلاحية *</label>
-                    <select id="userRole" required class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-purple-500">
+                    <select id="userRole" required class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-purple-500" onchange="updateUserFormByRole()">
                         <option value="">-- اختر الصلاحية --</option>
                         <option value="admin">المشرف العام</option>
                         <option value="manager">مدير فرع</option>
                         <option value="field_user">عامل ميداني</option>
+                        <option value="client">عميل</option>
                     </select>
+                    <p class="text-xs text-gray-500 mt-1" id="roleDescription"></p>
                 </div>
                 <div id="userBranchContainer">
                     <label class="block text-sm font-semibold text-gray-700 mb-2">الفرع</label>
@@ -2004,6 +2006,41 @@
                         <option value="">-- اختر الفرع --</option>
                     </select>
                 </div>
+                
+                <!-- Custom Permissions Section (Admin Only) -->
+                <div id="customPermissionsContainer" class="hidden border-t pt-4 mt-4">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">
+                        <i class="fas fa-shield-alt text-purple-600 ml-1"></i>
+                        صلاحيات مخصصة
+                    </label>
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <label class="flex items-center gap-2 p-2 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100">
+                            <input type="checkbox" id="permViewAllBranches" class="custom-permission">
+                            <span>رؤية كل الفروع</span>
+                        </label>
+                        <label class="flex items-center gap-2 p-2 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100">
+                            <input type="checkbox" id="permManageUsers" class="custom-permission">
+                            <span>إدارة المستخدمين</span>
+                        </label>
+                        <label class="flex items-center gap-2 p-2 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100">
+                            <input type="checkbox" id="permDeleteAssets" class="custom-permission">
+                            <span>حذف الأصول</span>
+                        </label>
+                        <label class="flex items-center gap-2 p-2 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100">
+                            <input type="checkbox" id="permExportData" class="custom-permission">
+                            <span>تصدير البيانات</span>
+                        </label>
+                        <label class="flex items-center gap-2 p-2 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100">
+                            <input type="checkbox" id="permViewReports" class="custom-permission">
+                            <span>عرض التقارير</span>
+                        </label>
+                        <label class="flex items-center gap-2 p-2 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100">
+                            <input type="checkbox" id="permManageSessions" class="custom-permission">
+                            <span>إدارة جلسات الجرد</span>
+                        </label>
+                    </div>
+                </div>
+                
                 <div class="flex gap-4 pt-4">
                     <button type="submit" class="flex-1 bg-purple-600 text-white py-3 rounded-xl font-semibold hover:bg-purple-700 transition-colors">
                         <i class="fas fa-save ml-2"></i>حفظ المستخدم
@@ -2083,11 +2120,11 @@
         </div>
     </div>
     
-    <!-- Firebase SDK (Optional - for cloud sync) -->
-    <!-- <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script> -->
-    <!-- <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script> -->
-    <!-- <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script> -->
-    <!-- <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script> -->
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
     
     <!-- New Modules -->
     <script src="js/firebase-config.js"></script>
@@ -2165,6 +2202,7 @@
             const adminOnlyElements = document.querySelectorAll('[data-role="admin"]');
             const managerOnlyElements = document.querySelectorAll('[data-role="manager"]');
             const fieldOnlyElements = document.querySelectorAll('[data-role="field_user"]');
+            const clientOnlyElements = document.querySelectorAll('[data-role="client"]');
             
             adminOnlyElements.forEach(el => {
                 el.style.display = role === 'admin' ? '' : 'none';
@@ -2173,6 +2211,19 @@
             managerOnlyElements.forEach(el => {
                 el.style.display = (role === 'admin' || role === 'manager') ? '' : 'none';
             });
+            
+            // Client role: hide most management features, show only their assets
+            if (role === 'client') {
+                // Hide sessions, users, branches management for clients
+                document.querySelectorAll('.nav-link').forEach(link => {
+                    const href = link.getAttribute('onclick') || '';
+                    if (href.includes('sessions') || href.includes('users') || href.includes('branches') || 
+                        href.includes('reports') || href.includes('maintenance') || href.includes('departments') || 
+                        href.includes('activity')) {
+                        link.style.display = 'none';
+                    }
+                });
+            }
             
             // Add role badge
             const roleBadge = document.createElement('div');
@@ -2187,7 +2238,12 @@
         }
         
         function getRoleNameLocal(role) {
-            const names = { admin: 'المشرف العام', manager: 'مدير فرع', field_user: 'عامل ميداني' };
+            const names = { 
+                admin: 'المشرف العام', 
+                manager: 'مدير فرع', 
+                field_user: 'عامل ميداني',
+                client: 'عميل'
+            };
             return names[role] || role;
         }
         
@@ -2195,7 +2251,8 @@
             const classes = {
                 admin: 'bg-purple-500 text-white',
                 manager: 'bg-blue-500 text-white',
-                field_user: 'bg-green-500 text-white'
+                field_user: 'bg-green-500 text-white',
+                client: 'bg-cyan-500 text-white'
             };
             return classes[role] || 'bg-gray-500 text-white';
         }

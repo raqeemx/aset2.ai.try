@@ -104,34 +104,48 @@ async function prepareExportData(assets, options = {}) {
         const asset = assets[i];
         const rowNum = i + 2; // Excel rows start at 1, header is row 1
         
-        // Get location data
+        // Get location data - support both gpsLocation object and direct latitude/longitude fields
         let locationLink = '';
         let locationUrl = '';
-        if (includeLocation && asset.gpsLocation) {
-            const { latitude, longitude } = asset.gpsLocation;
-            locationUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
+        const lat = asset.gpsLocation?.latitude || asset.latitude;
+        const lng = asset.gpsLocation?.longitude || asset.longitude;
+        
+        if (includeLocation && lat && lng) {
+            locationUrl = `https://www.google.com/maps?q=${lat},${lng}`;
             locationLink = 'فتح الخريطة';
             
             hyperlinks.push({
                 cell: `R${rowNum}`,
                 url: locationUrl,
                 display: 'فتح الخريطة',
-                tooltip: `الموقع: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
+                tooltip: `الموقع: ${parseFloat(lat).toFixed(6)}, ${parseFloat(lng).toFixed(6)}`
+            });
+        } else if (asset.googleMapsLink) {
+            // Use pre-generated Google Maps link
+            locationUrl = asset.googleMapsLink;
+            locationLink = 'فتح الخريطة';
+            
+            hyperlinks.push({
+                cell: `R${rowNum}`,
+                url: locationUrl,
+                display: 'فتح الخريطة',
+                tooltip: 'فتح الموقع على خرائط Google'
             });
         }
         
-        // Get photos album link
+        // Get photos album link - single link for all photos
         let photosLink = '';
         let photosUrl = '';
         if (includePhotos && asset.images && asset.images.length > 0) {
-            photosUrl = generateAlbumViewerUrl(asset.id);
-            photosLink = `عرض ${asset.images.length} صور`;
+            // Generate single album URL for this asset
+            photosUrl = generateAlbumViewerUrl(asset.id, asset.code || asset.name);
+            photosLink = `عرض الصور (${asset.images.length})`;
             
             hyperlinks.push({
                 cell: `S${rowNum}`,
                 url: photosUrl,
                 display: photosLink,
-                tooltip: `ألبوم صور الأصل - ${asset.images.length} صور`
+                tooltip: `ألبوم صور الأصل ${asset.name} - ${asset.images.length} صورة`
             });
         }
         

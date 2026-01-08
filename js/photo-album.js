@@ -259,9 +259,11 @@ async function reorderPhotos(assetId, photoIds) {
 }
 
 // === Generate Album Viewer URL ===
-function generateAlbumViewerUrl(assetId) {
-    const baseUrl = window.location.origin + window.location.pathname;
-    return `${baseUrl}?view=album&asset=${assetId}`;
+function generateAlbumViewerUrl(assetId, assetName = '') {
+    // Generate a shareable album URL
+    const baseUrl = window.location.origin + window.location.pathname.replace('index.html', '');
+    const cleanAssetName = encodeURIComponent(assetName || assetId);
+    return `${baseUrl}index.html?view=album&asset=${assetId}&name=${cleanAssetName}`;
 }
 
 // === Render Photo Gallery ===
@@ -634,6 +636,158 @@ function getWidgetPhotos(containerId) {
     return container._photoWidget.photos;
 }
 
+// === Handle Album URL Parameters ===
+async function handleAlbumUrlParams() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const view = urlParams.get('view');
+    const assetId = urlParams.get('asset');
+    const assetName = urlParams.get('name');
+    
+    if (view === 'album' && assetId) {
+        // Wait for database to be ready
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        try {
+            // Try to get asset from IndexedDB
+            const asset = await dbGet('assets', assetId);
+            
+            if (asset && asset.images && asset.images.length > 0) {
+                showAlbumFullscreen(asset, assetName);
+            } else {
+                // Show message that asset not found or has no photos
+                showAlbumNotFoundMessage(assetName);
+            }
+        } catch (error) {
+            console.error('Error loading album:', error);
+            showAlbumNotFoundMessage(assetName);
+        }
+    }
+}
+
+// === Show Album in Fullscreen Mode ===
+function showAlbumFullscreen(asset, assetName) {
+    const albumHtml = `
+        <div id="albumViewerOverlay" class="fixed inset-0 bg-black z-[9999] flex flex-col">
+            <div class="bg-gradient-to-r from-gov-blue to-gov-blue-light text-white p-4 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <i class="fas fa-images text-2xl"></i>
+                    <div>
+                        <h2 class="text-lg font-bold">${decodeURIComponent(assetName || asset.name || 'ألبوم الصور')}</h2>
+                        <p class="text-sm opacity-80">${asset.images.length} صورة • ${asset.code || ''}</p>
+                    </div>
+                </div>
+                <button onclick="closeAlbumViewer()" class="hover:bg-white/20 p-2 rounded-lg transition-colors">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <div class="flex-1 overflow-auto p-4">
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-6xl mx-auto">
+                    ${asset.images.map((img, index) => `
+                        <div class="bg-gray-800 rounded-xl overflow-hidden shadow-lg cursor-pointer transform hover:scale-105 transition-transform"
+                             onclick="openFullImage('${img.dataUrl || img}', ${index}, ${asset.images.length})">
+                            <img src="${img.thumbnail || img.dataUrl || img}" 
+                                 alt="صورة ${index + 1}"
+                                 class="w-full h-48 object-cover">
+                            <div class="p-2 text-center text-white text-sm">
+                                صورة ${index + 1} من ${asset.images.length}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            
+            <div class="bg-gray-900 text-white p-4 text-center">
+                <p class="text-sm opacity-70">
+                    <i class="fas fa-info-circle ml-1"></i>
+                    اضغط على أي صورة لعرضها بالحجم الكامل
+                </p>
+            </div>
+        </div>
+    `;
+    
+    // Create overlay container
+    const container = document.createElement('div');
+    container.innerHTML = albumHtml;
+    document.body.appendChild(container.firstElementChild);
+}
+
+// === Show Album Not Found Message ===
+function showAlbumNotFoundMessage(assetName) {
+    const messageHtml = `
+        <div id="albumViewerOverlay" class="fixed inset-0 bg-gray-100 z-[9999] flex items-center justify-center">
+            <div class="bg-white rounded-2xl shadow-xl p-8 max-w-md text-center">
+                <div class="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-image text-4xl text-gray-400"></i>
+                </div>
+                <h3 class="text-xl font-bold text-gray-800 mb-2">
+                    لا توجد صور متاحة
+                </h3>
+                <p class="text-gray-600 mb-6">
+                    ${assetName ? `الأصل "${decodeURIComponent(assetName)}" ليس لديه صور حالياً أو أنه غير موجود في قاعدة البيانات المحلية.` : 'لم يتم العثور على الأصل المطلوب.'}
+                </p>
+                <button onclick="closeAlbumViewer()" class="bg-gov-blue text-white px-6 py-2 rounded-xl hover:bg-gov-blue-light transition-colors">
+                    <i class="fas fa-arrow-right ml-2"></i>
+                    العودة
+                </button>
+            </div>
+        </div>
+    `;
+    
+    const container = document.createElement('div');
+    container.innerHTML = messageHtml;
+    document.body.appendChild(container.firstElementChild);
+}
+
+// === Open Full Image ===
+function openFullImage(imageUrl, currentIndex, totalImages) {
+    const fullImageHtml = `
+        <div id="fullImageViewer" class="fixed inset-0 bg-black z-[10000] flex flex-col" onclick="closeFullImage(event)">
+            <div class="p-4 text-white text-center">
+                صورة ${currentIndex + 1} من ${totalImages}
+            </div>
+            <div class="flex-1 flex items-center justify-center p-4">
+                <img src="${imageUrl}" alt="صورة" class="max-w-full max-h-full object-contain" onclick="event.stopPropagation()">
+            </div>
+            <div class="p-4 text-center">
+                <button onclick="closeFullImage(event)" class="bg-white/20 text-white px-6 py-2 rounded-xl hover:bg-white/30">
+                    <i class="fas fa-times ml-2"></i>
+                    إغلاق
+                </button>
+            </div>
+        </div>
+    `;
+    
+    const container = document.createElement('div');
+    container.innerHTML = fullImageHtml;
+    document.body.appendChild(container.firstElementChild);
+}
+
+// === Close Album Viewer ===
+function closeAlbumViewer() {
+    const overlay = document.getElementById('albumViewerOverlay');
+    if (overlay) {
+        overlay.remove();
+    }
+    // Clear URL params and redirect to main page
+    window.history.replaceState({}, '', 'index.html');
+}
+
+// === Close Full Image ===
+function closeFullImage(event) {
+    if (event) event.stopPropagation();
+    const viewer = document.getElementById('fullImageViewer');
+    if (viewer) {
+        viewer.remove();
+    }
+}
+
+// === Initialize on page load ===
+document.addEventListener('DOMContentLoaded', function() {
+    // Check for album view parameters after a short delay
+    setTimeout(handleAlbumUrlParams, 500);
+});
+
 // === Export for global access ===
 window.PHOTO_STATE = PHOTO_STATE;
 window.initializePhotoAlbum = initializePhotoAlbum;
@@ -654,3 +808,7 @@ window.widgetCapturePhoto = widgetCapturePhoto;
 window.widgetSelectPhotos = widgetSelectPhotos;
 window.widgetRemovePhoto = widgetRemovePhoto;
 window.getWidgetPhotos = getWidgetPhotos;
+window.handleAlbumUrlParams = handleAlbumUrlParams;
+window.closeAlbumViewer = closeAlbumViewer;
+window.closeFullImage = closeFullImage;
+window.openFullImage = openFullImage;
