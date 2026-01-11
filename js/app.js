@@ -416,35 +416,51 @@ async function initializeApp() {
 }
 
 function initializeEventListeners() {
+    // Helper function to safely add event listener
+    function safeAddListener(elementId, event, handler) {
+        const el = document.getElementById(elementId);
+        if (el) {
+            el.addEventListener(event, handler);
+            return true;
+        }
+        return false;
+    }
+    
     // Mobile menu toggle
-    document.getElementById('menuToggle').addEventListener('click', toggleSidebar);
+    safeAddListener('menuToggle', 'click', toggleSidebar);
+    
+    // Desktop sidebar toggle
+    safeAddListener('sidebarToggle', 'click', toggleSidebar);
+    
+    // Sidebar overlay (mobile)
+    safeAddListener('sidebarOverlay', 'click', closeSidebar);
     
     // Asset form submit
-    document.getElementById('assetForm').addEventListener('submit', handleAssetSubmit);
+    safeAddListener('assetForm', 'submit', handleAssetSubmit);
     
     // Department form submit
-    document.getElementById('departmentForm').addEventListener('submit', handleDepartmentSubmit);
+    safeAddListener('departmentForm', 'submit', handleDepartmentSubmit);
     
     // Maintenance form submit
-    document.getElementById('maintenanceForm').addEventListener('submit', handleMaintenanceSubmit);
+    safeAddListener('maintenanceForm', 'submit', handleMaintenanceSubmit);
     
     // Inventory form submit
-    document.getElementById('inventoryForm').addEventListener('submit', handleInventorySubmit);
+    safeAddListener('inventoryForm', 'submit', handleInventorySubmit);
     
     // Search and filters
-    document.getElementById('assetSearch').addEventListener('input', debounce(filterAssets, 300));
-    document.getElementById('categoryFilter').addEventListener('change', filterAssets);
-    document.getElementById('conditionFilter').addEventListener('change', filterAssets);
-    document.getElementById('departmentFilter').addEventListener('change', filterAssets);
+    safeAddListener('assetSearch', 'input', debounce(filterAssets, 300));
+    safeAddListener('categoryFilter', 'change', filterAssets);
+    safeAddListener('conditionFilter', 'change', filterAssets);
+    safeAddListener('departmentFilter', 'change', filterAssets);
     
     // Global search
-    document.getElementById('globalSearch').addEventListener('input', debounce(handleGlobalSearch, 300));
+    safeAddListener('globalSearch', 'input', debounce(handleGlobalSearch, 300));
     
     // Select all checkbox
-    document.getElementById('selectAll').addEventListener('change', handleSelectAll);
+    safeAddListener('selectAll', 'change', handleSelectAll);
     
     // Close modals on outside click
-    document.querySelectorAll('.fixed.inset-0').forEach(modal => {
+    document.querySelectorAll('.modal-overlay').forEach(modal => {
         modal.addEventListener('click', function(e) {
             if (e.target === this) {
                 this.classList.add('hidden');
@@ -453,7 +469,10 @@ function initializeEventListeners() {
     });
     
     // Set today's date for inventory
-    document.getElementById('inventoryDate').valueAsDate = new Date();
+    const inventoryDate = document.getElementById('inventoryDate');
+    if (inventoryDate) {
+        inventoryDate.valueAsDate = new Date();
+    }
     
     // Keyboard shortcuts
     document.addEventListener('keydown', handleKeyboardShortcuts);
@@ -462,10 +481,19 @@ function initializeEventListeners() {
     window.addEventListener('beforeunload', handleBeforeUnload);
     
     // Initialize searchable selects
-    initializeSearchableSelects();
+    if (typeof initializeSearchableSelects === 'function') {
+        initializeSearchableSelects();
+    }
     
     // Initialize buildings dropdown
-    initializeBuildingsDropdown();
+    if (typeof initializeBuildingsDropdown === 'function') {
+        initializeBuildingsDropdown();
+    }
+    
+    // Handle window resize for sidebar
+    window.addEventListener('resize', handleWindowResize);
+    
+    console.log('Event listeners initialized');
 }
 
 function handleKeyboardShortcuts(e) {
@@ -645,8 +673,98 @@ function showPage(pageName) {
     }
 }
 
+// === Sidebar Functions ===
+let sidebarState = {
+    isOpen: true,
+    isCollapsed: false
+};
+
 function toggleSidebar() {
-    document.getElementById('sidebar').classList.toggle('open');
+    const sidebar = document.getElementById('sidebar');
+    const mainContent = document.getElementById('mainContent');
+    const overlay = document.getElementById('sidebarOverlay');
+    
+    if (!sidebar) return;
+    
+    const isMobile = window.innerWidth < 1024;
+    
+    if (isMobile) {
+        // Mobile: slide in/out
+        sidebar.classList.toggle('open');
+        sidebarState.isOpen = sidebar.classList.contains('open');
+        
+        // Show/hide overlay
+        if (overlay) {
+            overlay.classList.toggle('hidden', !sidebarState.isOpen);
+        }
+    } else {
+        // Desktop: collapse/expand
+        sidebar.classList.toggle('collapsed');
+        sidebarState.isCollapsed = sidebar.classList.contains('collapsed');
+        
+        if (mainContent) {
+            mainContent.classList.toggle('sidebar-collapsed', sidebarState.isCollapsed);
+        }
+    }
+}
+
+function closeSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    
+    if (sidebar) {
+        sidebar.classList.remove('open');
+        sidebarState.isOpen = false;
+    }
+    
+    if (overlay) {
+        overlay.classList.add('hidden');
+    }
+}
+
+function openSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    
+    if (sidebar) {
+        sidebar.classList.add('open');
+        sidebarState.isOpen = true;
+    }
+    
+    if (overlay && window.innerWidth < 1024) {
+        overlay.classList.remove('hidden');
+    }
+}
+
+function handleWindowResize() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    const mainContent = document.getElementById('mainContent');
+    
+    if (!sidebar) return;
+    
+    const isMobile = window.innerWidth < 1024;
+    
+    if (isMobile) {
+        // Reset desktop collapse state for mobile
+        sidebar.classList.remove('collapsed');
+        if (mainContent) mainContent.classList.remove('sidebar-collapsed');
+        
+        // Close sidebar on mobile by default
+        if (!sidebarState.isOpen) {
+            sidebar.classList.remove('open');
+        }
+    } else {
+        // On desktop, hide mobile overlay
+        if (overlay) overlay.classList.add('hidden');
+        sidebar.classList.remove('open');
+        
+        // Apply collapsed state if it was set
+        if (sidebarState.isCollapsed) {
+            sidebar.classList.add('collapsed');
+            if (mainContent) mainContent.classList.add('sidebar-collapsed');
+        }
+    }
 }
 
 // === Data Loading ===
@@ -6945,6 +7063,12 @@ window.handleDeleteBranch = handleDeleteBranch;
 
 // Location functions
 window.captureAssetLocation = captureAssetLocation;
+
+// Sidebar functions
+window.toggleSidebar = toggleSidebar;
+window.closeSidebar = closeSidebar;
+window.openSidebar = openSidebar;
+window.handleWindowResize = handleWindowResize;
 
 // === Admin Dashboard Functions ===
 let branchPerformanceChart = null;

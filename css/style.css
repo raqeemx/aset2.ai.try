@@ -58,14 +58,127 @@ body {
     background: rgba(255, 255, 255, 0.1);
 }
 
-/* === Sidebar Mobile === */
+/* === Sidebar Responsive === */
+#sidebar {
+    transition: all 0.3s ease;
+    z-index: 40;
+}
+
+/* Desktop Sidebar */
+@media (min-width: 1024px) {
+    #sidebar {
+        position: fixed;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: var(--sidebar-width);
+    }
+    
+    #sidebar.collapsed {
+        width: 80px;
+    }
+    
+    #sidebar.collapsed .nav-text,
+    #sidebar.collapsed .sidebar-header-text,
+    #sidebar.collapsed .user-info,
+    #sidebar.collapsed .role-badge {
+        display: none;
+    }
+    
+    #sidebar.collapsed .nav-link {
+        justify-content: center;
+        padding: 12px;
+    }
+    
+    #sidebar.collapsed .nav-link i {
+        margin: 0;
+        font-size: 1.25rem;
+    }
+    
+    #mainContent {
+        margin-right: var(--sidebar-width);
+        transition: margin-right 0.3s ease;
+    }
+    
+    #mainContent.sidebar-collapsed {
+        margin-right: 80px;
+    }
+}
+
+/* Mobile/Tablet Sidebar */
 @media (max-width: 1023px) {
     #sidebar {
+        position: fixed;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 85%;
+        max-width: 320px;
         transform: translateX(100%);
+        z-index: 50;
     }
     
     #sidebar.open {
         transform: translateX(0);
+    }
+    
+    #mainContent {
+        margin-right: 0;
+    }
+    
+    /* Sidebar Overlay */
+    #sidebarOverlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 45;
+        transition: opacity 0.3s ease;
+    }
+    
+    #sidebarOverlay.hidden {
+        opacity: 0;
+        pointer-events: none;
+    }
+}
+
+/* Sidebar Toggle Button */
+.sidebar-toggle-btn {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--gov-blue);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 15px rgba(30, 64, 175, 0.4);
+    cursor: pointer;
+    z-index: 35;
+    transition: all 0.3s ease;
+}
+
+.sidebar-toggle-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(30, 64, 175, 0.5);
+}
+
+@media (min-width: 1024px) {
+    .sidebar-toggle-btn {
+        display: none;
+    }
+    
+    /* Desktop toggle button in header */
+    .desktop-sidebar-toggle {
+        display: flex;
+    }
+}
+
+@media (max-width: 1023px) {
+    .desktop-sidebar-toggle {
+        display: none;
     }
 }
 

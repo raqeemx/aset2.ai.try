@@ -177,17 +177,24 @@
         </div>
     </aside>
     
-    <!-- Mobile Menu Toggle -->
-    <button id="menuToggle" class="lg:hidden fixed top-4 right-4 z-50 bg-gov-blue text-white p-3 rounded-xl shadow-lg">
+    <!-- Sidebar Overlay (Mobile) -->
+    <div id="sidebarOverlay" class="fixed inset-0 bg-black/50 hidden lg:hidden" style="z-index: 45;" onclick="closeSidebar()"></div>
+    
+    <!-- Mobile Menu Toggle (FAB) -->
+    <button id="menuToggle" class="lg:hidden fixed bottom-6 right-6 z-50 bg-gov-blue text-white w-14 h-14 rounded-full shadow-lg flex items-center justify-center hover:bg-gov-blue-light transition-all duration-300 hover:scale-110">
         <i class="fas fa-bars text-xl"></i>
     </button>
     
     <!-- Main Content -->
-    <main class="lg:mr-72 min-h-screen">
+    <main id="mainContent" class="lg:mr-72 min-h-screen transition-all duration-300">
         <!-- Top Header -->
         <header class="bg-white shadow-sm sticky top-0 z-30">
             <div class="flex items-center justify-between px-6 py-4">
                 <div class="flex items-center gap-4">
+                    <!-- Desktop Sidebar Toggle -->
+                    <button id="sidebarToggle" onclick="toggleSidebar()" class="hidden lg:flex p-2 text-gray-600 hover:bg-gray-100 rounded-xl transition-colors" title="تصغير/توسيع القائمة">
+                        <i class="fas fa-bars text-lg"></i>
+                    </button>
                     <h2 id="pageTitle" class="text-xl font-bold text-gray-800">لوحة التحكم</h2>
                     <span class="text-sm text-gray-500" id="currentDate"></span>
                 </div>
